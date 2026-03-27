@@ -295,6 +295,85 @@ func scanSessions(rows *sql.Rows) ([]Session, error) {
 	return sessions, nil
 }
 
+func (s *Store) GetReadyFeatures() ([]Feature, error) {
+	rows, err := s.db.Query(
+		`SELECT id, title, description, status, left_off, key_files, worktree_path, created_at, updated_at FROM features WHERE status IN ('in_progress', 'planned') ORDER BY CASE WHEN status='in_progress' THEN 0 ELSE 1 END, updated_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get ready features: %w", err)
+	}
+	defer rows.Close()
+	var features []Feature
+	for rows.Next() {
+		var f Feature
+		var keyFilesJSON string
+		if err := rows.Scan(&f.ID, &f.Title, &f.Description, &f.Status, &f.LeftOff, &keyFilesJSON, &f.WorktreePath, &f.CreatedAt, &f.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan feature: %w", err)
+		}
+		json.Unmarshal([]byte(keyFilesJSON), &f.KeyFiles)
+		if f.KeyFiles == nil {
+			f.KeyFiles = []string{}
+		}
+		features = append(features, f)
+	}
+	return features, nil
+}
+
+func (s *Store) CompactSessions(featureID, summary string) (int, error) {
+	// Count total sessions for feature
+	var total int
+	s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE feature_id = ?`, featureID).Scan(&total)
+	if total <= 3 {
+		return 0, nil
+	}
+
+	// Get IDs of all but the last 3 sessions
+	rows, err := s.db.Query(
+		`SELECT id FROM sessions WHERE feature_id = ? ORDER BY created_at DESC LIMIT -1 OFFSET 3`,
+		featureID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("query old sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	// Insert compacted session
+	_, err = s.db.Exec(
+		`INSERT INTO sessions (feature_id, summary, files_touched, commits, auto_linked, link_reason, compacted) VALUES (?, ?, '[]', '[]', 0, 'compacted', 1)`,
+		featureID, summary,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("insert compacted session: %w", err)
+	}
+
+	// Delete old sessions
+	placeholders := make([]string, len(ids))
+	delArgs := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		delArgs[i] = id
+	}
+	_, err = s.db.Exec(
+		fmt.Sprintf("DELETE FROM sessions WHERE id IN (%s)", strings.Join(placeholders, ",")),
+		delArgs...,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete old sessions: %w", err)
+	}
+
+	return len(ids), nil
+}
+
 func (s *Store) GetContext(id string) (*FeatureContext, error) {
 	f, err := s.GetFeature(id)
 	if err != nil {

@@ -49,6 +49,16 @@ func registerTools(srv *server.MCPServer, s *store.Store) {
 		mcp.WithDescription("Get a token-efficient briefing for a feature: status, where we left off, worktree path, recent sessions, key files. ~15-20 lines."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("Feature slug ID")),
 	), getContextHandler(s))
+
+	srv.AddTool(mcp.NewTool("get_ready",
+		mcp.WithDescription("List actionable features: in_progress first (resume), then planned (start new). Excludes blocked and done."),
+	), getReadyHandler(s))
+
+	srv.AddTool(mcp.NewTool("compact_sessions",
+		mcp.WithDescription("Compact old sessions for a feature into a single summary. Keeps the last 3 sessions, replaces older ones with the provided summary. Call get_feature first to read the sessions, then write a summary."),
+		mcp.WithString("id", mcp.Required(), mcp.Description("Feature slug ID")),
+		mcp.WithString("summary", mcp.Required(), mcp.Description("Summary of the compacted sessions (you write this after reading the old sessions)")),
+	), compactSessionsHandler(s))
 }
 
 func addFeatureHandler(s *store.Store) server.ToolHandlerFunc {
@@ -195,5 +205,51 @@ func getContextHandler(s *store.Store) server.ToolHandlerFunc {
 		}
 
 		return mcp.NewToolResultText(b.String()), nil
+	}
+}
+
+func getReadyHandler(s *store.Store) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		features, err := s.GetReadyFeatures()
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		if len(features) == 0 {
+			return mcp.NewToolResultText("Nothing ready — all features are done or blocked."), nil
+		}
+
+		var lines []string
+		for _, f := range features {
+			line := fmt.Sprintf("- **%s** [%s] %s", f.ID, f.Status, f.Title)
+			if f.LeftOff != "" {
+				snippet := f.LeftOff
+				if len(snippet) > 60 {
+					snippet = snippet[:60] + "..."
+				}
+				line += fmt.Sprintf(" — %s", snippet)
+			}
+			lines = append(lines, line)
+		}
+		return mcp.NewToolResultText(strings.Join(lines, "\n")), nil
+	}
+}
+
+func compactSessionsHandler(s *store.Store) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.GetArguments()
+		id := args["id"].(string)
+		summary := args["summary"].(string)
+
+		n, err := s.CompactSessions(id, summary)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		if n == 0 {
+			return mcp.NewToolResultText("Nothing to compact (3 or fewer sessions)."), nil
+		}
+
+		return mcp.NewToolResultText(fmt.Sprintf("Compacted %d sessions into 1 summary. Last 3 sessions preserved.", n)), nil
 	}
 }

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -124,5 +125,77 @@ func TestGetContextNotFound(t *testing.T) {
 	_, err := s.GetContext("nonexistent")
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestGetReadyFeatures(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Done Feature", "")
+	s.UpdateFeature("done-feature", FeatureUpdate{Status: strPtr("done")})
+	s.AddFeature("Blocked Feature", "")
+	s.UpdateFeature("blocked-feature", FeatureUpdate{Status: strPtr("blocked")})
+	s.AddFeature("Active Feature", "")
+	s.UpdateFeature("active-feature", FeatureUpdate{Status: strPtr("in_progress")})
+	s.AddFeature("Planned Feature", "")
+
+	ready, err := s.GetReadyFeatures()
+	if err != nil {
+		t.Fatalf("GetReadyFeatures: %v", err)
+	}
+	if len(ready) != 2 {
+		t.Fatalf("got %d ready, want 2", len(ready))
+	}
+	// in_progress should come first
+	if ready[0].Status != "in_progress" {
+		t.Errorf("first ready status = %q, want in_progress", ready[0].Status)
+	}
+	if ready[1].Status != "planned" {
+		t.Errorf("second ready status = %q, want planned", ready[1].Status)
+	}
+}
+
+func TestCompactSessions(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Big Feature", "")
+
+	// Log 6 sessions
+	for i := 0; i < 6; i++ {
+		s.LogSession(SessionInput{
+			FeatureID: "big-feature",
+			Summary:   fmt.Sprintf("session %d", i+1),
+		})
+	}
+
+	sessions, _ := s.GetSessionsForFeature("big-feature")
+	if len(sessions) != 6 {
+		t.Fatalf("pre-compact: got %d sessions, want 6", len(sessions))
+	}
+
+	n, err := s.CompactSessions("big-feature", "Prior work: sessions 1-3 did initial setup")
+	if err != nil {
+		t.Fatalf("CompactSessions: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("compacted %d, want 3", n)
+	}
+
+	sessions, _ = s.GetSessionsForFeature("big-feature")
+	// 3 kept + 1 compacted = 4
+	if len(sessions) != 4 {
+		t.Fatalf("post-compact: got %d sessions, want 4", len(sessions))
+	}
+}
+
+func TestCompactSessionsTooFew(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Small Feature", "")
+	s.LogSession(SessionInput{FeatureID: "small-feature", Summary: "only one"})
+
+	n, err := s.CompactSessions("small-feature", "summary")
+	if err != nil {
+		t.Fatalf("CompactSessions: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("compacted %d, want 0", n)
 	}
 }

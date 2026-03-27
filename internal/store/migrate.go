@@ -27,7 +27,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 `
 
+const schemaV2 = `
+ALTER TABLE sessions ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0;
+`
+
 func migrate(db *sql.DB) error {
-	_, err := db.Exec(schemaV1)
-	return err
+	if _, err := db.Exec(schemaV1); err != nil {
+		return err
+	}
+	// v2: add compacted column (ignore error if already exists)
+	db.Exec(schemaV2)
+	return nil
 }
