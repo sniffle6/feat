@@ -178,3 +178,114 @@ func (s *Store) ListFeatures(status string) ([]Feature, error) {
 	}
 	return features, nil
 }
+
+type Session struct {
+	ID           int64     `json:"id"`
+	FeatureID    string    `json:"feature_id"`
+	Summary      string    `json:"summary"`
+	FilesTouched []string  `json:"files_touched"`
+	Commits      []string  `json:"commits"`
+	AutoLinked   bool      `json:"auto_linked"`
+	LinkReason   string    `json:"link_reason"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type SessionInput struct {
+	FeatureID    string   `json:"feature_id"`
+	Summary      string   `json:"summary"`
+	FilesTouched []string `json:"files_touched"`
+	Commits      []string `json:"commits"`
+	AutoLinked   bool     `json:"auto_linked"`
+	LinkReason   string   `json:"link_reason"`
+}
+
+func (s *Store) LogSession(input SessionInput) (*Session, error) {
+	ft, _ := json.Marshal(input.FilesTouched)
+	cm, _ := json.Marshal(input.Commits)
+	var featureID *string
+	if input.FeatureID != "" {
+		featureID = &input.FeatureID
+	}
+	res, err := s.db.Exec(
+		`INSERT INTO sessions (feature_id, summary, files_touched, commits, auto_linked, link_reason) VALUES (?, ?, ?, ?, ?, ?)`,
+		featureID, input.Summary, string(ft), string(cm), input.AutoLinked, input.LinkReason,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert session: %w", err)
+	}
+	id, _ := res.LastInsertId()
+	return s.getSession(id)
+}
+
+func (s *Store) getSession(id int64) (*Session, error) {
+	row := s.db.QueryRow(
+		`SELECT id, COALESCE(feature_id, ''), summary, files_touched, commits, auto_linked, link_reason, created_at FROM sessions WHERE id = ?`, id,
+	)
+	return scanSession(row)
+}
+
+func (s *Store) GetSessionsForFeature(featureID string) ([]Session, error) {
+	rows, err := s.db.Query(
+		`SELECT id, COALESCE(feature_id, ''), summary, files_touched, commits, auto_linked, link_reason, created_at FROM sessions WHERE feature_id = ? ORDER BY created_at DESC`, featureID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanSessions(rows)
+}
+
+func (s *Store) GetUnlinkedSessions() ([]Session, error) {
+	rows, err := s.db.Query(
+		`SELECT id, COALESCE(feature_id, ''), summary, files_touched, commits, auto_linked, link_reason, created_at FROM sessions WHERE feature_id IS NULL ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanSessions(rows)
+}
+
+func (s *Store) ReassignSession(sessionID int64, featureID string) error {
+	_, err := s.db.Exec(`UPDATE sessions SET feature_id = ?, auto_linked = 0, link_reason = 'manual reassign' WHERE id = ?`, featureID, sessionID)
+	return err
+}
+
+func scanSession(row *sql.Row) (*Session, error) {
+	var sess Session
+	var ft, cm string
+	err := row.Scan(&sess.ID, &sess.FeatureID, &sess.Summary, &ft, &cm, &sess.AutoLinked, &sess.LinkReason, &sess.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	json.Unmarshal([]byte(ft), &sess.FilesTouched)
+	json.Unmarshal([]byte(cm), &sess.Commits)
+	if sess.FilesTouched == nil {
+		sess.FilesTouched = []string{}
+	}
+	if sess.Commits == nil {
+		sess.Commits = []string{}
+	}
+	return &sess, nil
+}
+
+func scanSessions(rows *sql.Rows) ([]Session, error) {
+	var sessions []Session
+	for rows.Next() {
+		var sess Session
+		var ft, cm string
+		if err := rows.Scan(&sess.ID, &sess.FeatureID, &sess.Summary, &ft, &cm, &sess.AutoLinked, &sess.LinkReason, &sess.CreatedAt); err != nil {
+			return nil, err
+		}
+		json.Unmarshal([]byte(ft), &sess.FilesTouched)
+		json.Unmarshal([]byte(cm), &sess.Commits)
+		if sess.FilesTouched == nil {
+			sess.FilesTouched = []string{}
+		}
+		if sess.Commits == nil {
+			sess.Commits = []string{}
+		}
+		sessions = append(sessions, sess)
+	}
+	return sessions, nil
+}
