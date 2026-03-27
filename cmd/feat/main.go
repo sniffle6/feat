@@ -8,6 +8,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/sniffyanimal/feat/internal/dashboard"
 	featmcp "github.com/sniffyanimal/feat/internal/mcp"
 	"github.com/sniffyanimal/feat/internal/store"
 )
@@ -57,14 +58,11 @@ func runServe() {
 	}
 	defer s.Close()
 
-	// Start HTTP dashboard in background (placeholder for now, Task 8 adds real handler)
+	// Start HTTP dashboard in background
 	go func() {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("feat dashboard — coming soon"))
-		})
+		handler := dashboard.NewHandler(s, nil) // nil static FS for now, Task 9 adds it
 		log.Printf("Dashboard: http://localhost:7890")
-		if err := http.ListenAndServe(":7890", mux); err != nil {
+		if err := http.ListenAndServe(":7890", handler); err != nil {
 			log.Printf("dashboard error: %v", err)
 		}
 	}()
