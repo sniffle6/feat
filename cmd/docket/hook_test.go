@@ -12,6 +12,8 @@ import (
 	"github.com/sniffle6/claude-docket/internal/store"
 )
 
+func strPtr(s string) *string { return &s }
+
 func TestSessionStartWithFeature(t *testing.T) {
 	dir := t.TempDir()
 	s, err := store.Open(dir)
@@ -222,6 +224,83 @@ func TestPostToolUseIgnoresNonCommit(t *testing.T) {
 	}
 	if out.SystemMessage != "" {
 		t.Errorf("expected no systemMessage for non-commit, got: %s", out.SystemMessage)
+	}
+}
+
+func TestStopWritesHandoffFile(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := s.AddFeature("Handoff Feature", "testing handoff generation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := "in_progress"
+	leftOff := "implementing the parser"
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: &status, LeftOff: &leftOff})
+	s.Close()
+
+	h := &hookInput{
+		SessionID:     "test-session",
+		CWD:           dir,
+		HookEventName: "Stop",
+	}
+
+	var buf bytes.Buffer
+	handleStop(h, &buf)
+
+	// Verify handoff file was created
+	handoffPath := filepath.Join(dir, ".docket", "handoff", f.ID+".md")
+	content, err := os.ReadFile(handoffPath)
+	if err != nil {
+		t.Fatalf("handoff file not created: %v", err)
+	}
+	if !strings.Contains(string(content), "# Handoff: Handoff Feature") {
+		t.Errorf("handoff missing title:\n%s", content)
+	}
+	if !strings.Contains(string(content), "implementing the parser") {
+		t.Errorf("handoff missing left_off:\n%s", content)
+	}
+}
+
+func TestStopCleansStaleHandoffs(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create one active and one done feature
+	s.AddFeature("Active Feature", "")
+	s.UpdateFeature("active-feature", store.FeatureUpdate{Status: strPtr("in_progress")})
+	s.AddFeature("Done Feature", "")
+	s.UpdateFeature("done-feature", store.FeatureUpdate{Status: strPtr("done")})
+	s.Close()
+
+	// Create a stale handoff for the done feature
+	handoffDir := filepath.Join(dir, ".docket", "handoff")
+	os.MkdirAll(handoffDir, 0755)
+	os.WriteFile(filepath.Join(handoffDir, "done-feature.md"), []byte("stale"), 0644)
+
+	h := &hookInput{
+		SessionID:     "test-session",
+		CWD:           dir,
+		HookEventName: "Stop",
+	}
+
+	var buf bytes.Buffer
+	handleStop(h, &buf)
+
+	// Active feature should have a handoff
+	if _, err := os.Stat(filepath.Join(handoffDir, "active-feature.md")); err != nil {
+		t.Error("active handoff should exist")
+	}
+	// Done feature handoff should be cleaned up
+	if _, err := os.Stat(filepath.Join(handoffDir, "done-feature.md")); !os.IsNotExist(err) {
+		t.Error("stale handoff should be deleted")
 	}
 }
 

@@ -155,6 +155,19 @@ func handleStop(h *hookInput, w io.Writer) {
 		os.Remove(commitsPath)
 	}
 
+	// Write handoff files for in_progress features, clean stale ones
+	if len(features) > 0 {
+		activeIDs := make(map[string]bool)
+		for _, f := range features {
+			activeIDs[f.ID] = true
+			data, err := s.GetHandoffData(f.ID)
+			if err == nil {
+				writeHandoffFile(h.CWD, data)
+			}
+		}
+		cleanStaleHandoffs(h.CWD, activeIDs)
+	}
+
 	json.NewEncoder(w).Encode(out)
 }
 
