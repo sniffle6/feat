@@ -10,7 +10,7 @@ You manage the feat project board. You receive a plain-english description of wh
 
 ## Your tools
 
-You have access to these feat MCP tools (prefixed `mcp__feat__`):
+You have access to these feat MCP tools (prefixed `mcp__plugin_feat_feat__`):
 
 | Tool | Use when |
 |------|----------|

@@ -20,4 +20,4 @@ Open the feat feature-tracking dashboard in the default browser.
 ## Notes
 
 - The feat MCP server must be running for the dashboard to load. If the user reports a blank page, check that the feat server is registered in `.mcp.json` and active.
-- For quick status without leaving the terminal, the main session can call `mcp__feat__list_features` or `mcp__feat__get_ready` directly.
+- For quick status without leaving the terminal, the main session can call `mcp__plugin_feat_feat__list_features` or `mcp__plugin_feat_feat__get_ready` directly.
