@@ -68,6 +68,13 @@ cat > "$PLUGIN_INSTALL/.mcp.json" << MCPEOF
 MCPEOF
 echo "Generated $PLUGIN_INSTALL/.mcp.json"
 
+# Copy hooks and replace binary path placeholder
+if [ -d "$SOURCE_DIR/plugin/hooks" ]; then
+    cp -r "$SOURCE_DIR/plugin/hooks" "$PLUGIN_INSTALL/"
+    sed -i "s|DOCKET_EXE_PATH|$DOCKET_BIN_JSON|g" "$PLUGIN_INSTALL/hooks/hooks.json"
+    echo "Installed hooks with binary path: $DOCKET_BIN_JSON"
+fi
+
 # --- Step 3: Register plugin in settings.json ---
 
 if [ -f "$SETTINGS_FILE" ]; then

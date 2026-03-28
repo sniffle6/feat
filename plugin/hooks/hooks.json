@@ -1,0 +1,39 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "DOCKET_EXE_PATH hook",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "DOCKET_EXE_PATH hook",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Before ending: 1) Read .docket/commits.log for commits made this session. 2) Call log_session with a summary of what was accomplished, files touched, and commits. 3) Dispatch the board-manager agent with the session summary, commits, files, and active feature ID to update the board. 4) Delete .docket/commits.log."
+          }
+        ]
+      }
+    ]
+  }
+}
