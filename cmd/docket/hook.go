@@ -127,34 +127,34 @@ func handleStop(h *hookInput, w io.Writer) {
 		return
 	}
 
-	var msg strings.Builder
-	msg.WriteString("[docket] Session ending.\n")
+	// Log session directly if there's an active feature
+	if len(features) > 0 && len(commits) > 0 {
+		f := features[0]
 
-	if len(commits) > 0 {
-		msg.WriteString("Commits this session:\n")
+		// Build mechanical summary from commits
+		var summaryParts []string
+		var commitHashes []string
 		for _, c := range commits {
-			msg.WriteString("  " + c + "\n")
+			parts := strings.SplitN(c, "|||", 2)
+			if len(parts) == 2 {
+				commitHashes = append(commitHashes, parts[0])
+				summaryParts = append(summaryParts, parts[1])
+			}
 		}
-	} else {
-		msg.WriteString("No commits this session.\n")
+		summary := fmt.Sprintf("%d commit(s): %s", len(commits), strings.Join(summaryParts, "; "))
+
+		s.LogSession(store.SessionInput{
+			FeatureID: f.ID,
+			Summary:   summary,
+			Commits:   commitHashes,
+		})
 	}
 
-	if len(features) > 0 {
-		msg.WriteString("Active features:\n")
-		for _, f := range features {
-			msg.WriteString(fmt.Sprintf("  - %s (id: %s)\n", f.Title, f.ID))
-		}
-		msg.WriteString(fmt.Sprintf("\nCall log_session for feature \"%s\" with a summary of what was accomplished, files touched, and commit hashes. ", features[0].ID))
-		msg.WriteString(fmt.Sprintf("Then dispatch the board-manager agent (model: sonnet) with the session summary, commits, files, and feature_id=\"%s\".", features[0].ID))
-	} else {
-		msg.WriteString("No active features — skip log_session.\n")
-	}
-
+	// Clean up commits.log
 	if len(commits) > 0 {
-		msg.WriteString(fmt.Sprintf("\nAfter logging, delete %s.", commitsPath))
+		os.Remove(commitsPath)
 	}
 
-	out.SystemMessage = msg.String()
 	json.NewEncoder(w).Encode(out)
 }
 

@@ -54,6 +54,7 @@ This project uses `docket` for feature tracking. Dashboard: http://localhost:789
 Dispatch the `board-manager` agent (model: sonnet) at these points:
 1. **Start of implementation work** — skip for questions/reviews/lookups
 2. **After a commit** — pass commit hash, message, files, feature ID
-3. **Session ending** — pass summary, commits, files, feature ID
+
+Session logging is handled automatically by the Stop hook (no agent dispatch needed).
 
 Carry the feature ID the agent returns across dispatches. `get_ready` stays in main session.

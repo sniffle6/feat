@@ -123,17 +123,35 @@ func TestStopWithCommitsAndFeature(t *testing.T) {
 	if !out.Continue {
 		t.Error("expected Continue to be true")
 	}
-	if !strings.Contains(out.SystemMessage, "abc123") {
-		t.Errorf("expected commit hash in message, got: %s", out.SystemMessage)
+	if out.SystemMessage != "" {
+		t.Errorf("expected no systemMessage, got: %s", out.SystemMessage)
 	}
-	if !strings.Contains(out.SystemMessage, "my-feature") {
-		t.Errorf("expected feature ID in message, got: %s", out.SystemMessage)
+
+	// Verify session was logged directly to the database
+	s2, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(out.SystemMessage, "log_session") {
-		t.Errorf("expected log_session instruction, got: %s", out.SystemMessage)
+	defer s2.Close()
+
+	sessions, err := s2.GetSessionsForFeature(f.ID)
+	if err != nil {
+		t.Fatalf("get sessions: %v", err)
 	}
-	if !strings.Contains(out.SystemMessage, "board-manager") {
-		t.Errorf("expected board-manager instruction, got: %s", out.SystemMessage)
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+	sess := sessions[0]
+	if !strings.Contains(sess.Summary, "feat: add something") {
+		t.Errorf("expected commit message in summary, got: %s", sess.Summary)
+	}
+	if len(sess.Commits) != 2 || sess.Commits[0] != "abc123" {
+		t.Errorf("expected commit hashes [abc123, def456], got: %v", sess.Commits)
+	}
+
+	// Verify commits.log was deleted
+	if _, err := os.Stat(commitsPath); !os.IsNotExist(err) {
+		t.Error("expected commits.log to be deleted")
 	}
 }
 
@@ -161,11 +179,23 @@ func TestStopNoCommitsNoFeatures(t *testing.T) {
 	if !out.Continue {
 		t.Error("expected Continue to be true")
 	}
-	if !strings.Contains(out.SystemMessage, "No commits") {
-		t.Errorf("expected 'No commits' in message, got: %s", out.SystemMessage)
+	if out.SystemMessage != "" {
+		t.Errorf("expected no systemMessage, got: %s", out.SystemMessage)
 	}
-	if !strings.Contains(out.SystemMessage, "skip log_session") {
-		t.Errorf("expected skip instruction, got: %s", out.SystemMessage)
+
+	// Verify no sessions were logged
+	s2, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+
+	sessions, err := s2.GetUnlinkedSessions()
+	if err != nil {
+		t.Fatalf("get sessions: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(sessions))
 	}
 }
 

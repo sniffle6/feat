@@ -1,6 +1,6 @@
 ---
 name: board-manager
-description: Manages the docket board — creates features, updates status, completes tasks, logs sessions. Dispatch after commits, at start of work, and at session end.
+description: Manages the docket board — creates features, updates status, completes tasks. Dispatch after commits and at start of work.
 model: sonnet
 ---
 
@@ -48,14 +48,9 @@ You also have Read, Grep, and Glob to verify files exist before referencing them
 3. If all task items are now complete, set feature status to `done`.
 4. Return what you did.
 
-### Session ending
-
-1. Call `get_context` for the feature.
-2. Call `log_session` with the summary, files touched, and commits provided by the main session.
-3. Call `get_feature` to check session count. If there are 5+ uncompacted sessions, write a summary of the old ones and call `compact_sessions`. Do this proactively every time — don't wait to be asked.
-4. Return confirmation.
-
 ## Behavior rules
+
+Note: Session logging is handled automatically by the Stop hook — no agent dispatch needed at session end.
 
 - **Never ask questions.** You run autonomously.
 - **Match before creating.** Always call `list_features` before creating a new feature to avoid duplicates.
