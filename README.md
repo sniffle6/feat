@@ -5,8 +5,10 @@ Local feature tracker for AI coding agents. MCP server + web dashboard.
 ## Install
 
 ```bash
-go install github.com/sniffyanimal/feat@latest
+bash install.sh
 ```
+
+See `INSTALL.md` for full setup instructions.
 
 ## Quick Start
 
@@ -18,45 +20,14 @@ feat serve         # starts MCP server + dashboard on localhost:7890
 
 ## Claude Code Setup
 
-Add to `.claude/settings.json`:
+Run `bash install.sh` to build and install the plugin. See `INSTALL.md` for details.
 
-```json
-{
-  "mcpServers": {
-    "feat": {
-      "command": "feat",
-      "args": ["serve"],
-      "type": "stdio"
-    }
-  }
-}
-```
+The plugin provides:
+- **board-manager agent** — handles all feat board operations autonomously
+- **/feat skill** — opens the dashboard in a browser
+- **MCP server config** — connects Claude Code to the feat binary
 
-Add to your project's `CLAUDE.md`:
-
-```markdown
-## Feature Tracking (feat)
-
-This project uses feat for feature tracking. When the user describes work:
-
-1. Call list_features to check for a matching feature.
-2. If one matches, call get_context to load it, then switch to its worktree.
-3. If none match, ask if this is a new feature. If yes, call add_feature,
-   create a worktree, and call update_feature with the worktree path.
-```
-
-Optional — add a Stop hook for auto session logging in `.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "Stop": [{
-      "type": "prompt",
-      "prompt": "Before ending, call the feat.log_session tool with a brief summary of what was accomplished this session, files touched, commits made, and the feature ID if you were working on one."
-    }]
-  }
-}
-```
+Add the CLAUDE.md dispatch snippet to each project (see `plugin/README.md`).
 
 ## MCP Tools
 
@@ -66,12 +37,19 @@ Optional — add a Stop hook for auto session logging in `.claude/settings.json`
 | `update_feature` | Update status, description, left_off, worktree_path, key_files. |
 | `list_features` | Compact feature list, filterable by status. |
 | `get_feature` | Full feature detail with all sessions. |
-| `log_session` | Record what happened in a session. |
 | `get_context` | Token-efficient briefing (~15-20 lines). |
+| `get_ready` | Actionable features (in_progress first, then planned). |
+| `get_full_context` | Deep context for subagent research. |
+| `log_session` | Record what happened in a session. |
+| `compact_sessions` | Compress old sessions into a summary. |
+| `import_plan` | Import markdown plan as subtasks/task items. |
+| `add_subtask` | Create a phase manually. |
+| `add_task_item` | Add a task to a subtask. |
+| `complete_task_item` | Mark a task item done with outcome and commit hash. |
 
 ## Dashboard
 
-Open `http://localhost:7890` while `feat serve` is running.
+Open `http://localhost:7890` while `feat serve` is running (or use `/feat` skill).
 
 - Kanban board: Planned / In Progress / Blocked / Done
 - Click a card for full detail, session history, key files
