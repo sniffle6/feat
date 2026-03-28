@@ -44,7 +44,15 @@ You also have Read, Grep, and Glob to verify files exist before referencing them
    - **Implementation code**: check if there are task items (from an imported plan). If so, match the commit description to the most relevant uncompleted task item and call `complete_task_item` with the outcome, commit hash, and files. Then call `update_feature` with updated `left_off` and `key_files`.
    - **Small standalone change** (no existing feature, no plan): call `add_feature` with status `done` and include the commit hash in the description.
 3. If all task items are now complete, set feature status to `done`.
-4. Return what you did.
+4. Enrich the handoff file at `.docket/handoff/<feature-id>.md`:
+   - Read the existing handoff file (the Stop hook writes the mechanical baseline).
+   - Append these sections below the existing content (never modify the mechanical sections above):
+     - **## Decisions & Context** — synthesize from session history: what approaches were tried, what worked, what was rejected.
+     - **## Gotchas** — anything the next session should watch out for (edge cases found, fragile areas, things that almost broke).
+     - **## Recommended Approach** — what to do next and why, based on the current state.
+   - If these sections already exist in the file (from a previous enrichment), replace them with updated versions.
+   - Keep it concise — 3-5 bullet points per section max.
+5. Return what you did.
 
 ## Behavior rules
 
@@ -53,5 +61,6 @@ You also have Read, Grep, and Glob to verify files exist before referencing them
 - **Match before creating.** Always call `list_features` before creating a new feature to avoid duplicates.
 - **Create conservatively.** Only create a feature when work clearly represents a new feature/fix — not for exploratory discussion.
 - **Read before updating description.** Call `get_context` or `get_feature` before `update_feature` so you don't overwrite existing description content — append to it.
+- **Enrich handoffs after commits.** Always read and update the handoff file when processing a commit. The mechanical baseline is written by the Stop hook — your job is to add synthesis.
 - **Fail gracefully.** If an MCP call fails, report the error in your return. Don't retry.
 - **Be concise.** Your return should be 3-5 lines: feature ID, actions taken, brief context for the main session.
