@@ -80,19 +80,33 @@ fi
 # --- Step 4: Register plugin in installed_plugins.json ---
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-# Convert to Windows path with escaped backslashes for JSON
+# Convert to Windows path for JSON
 if command -v cygpath &> /dev/null; then
-    INSTALL_PATH_JSON=$(cygpath -w "$PLUGIN_INSTALL" | sed 's|\\|\\\\|g')
+    INSTALL_PATH_WIN=$(cygpath -w "$PLUGIN_INSTALL")
 else
-    INSTALL_PATH_JSON=$(echo "$PLUGIN_INSTALL" | sed 's|/|\\\\|g')
+    INSTALL_PATH_WIN="$PLUGIN_INSTALL"
 fi
 
 if [ -f "$PLUGINS_FILE" ]; then
     if grep -q '"feat@local"' "$PLUGINS_FILE" 2>/dev/null; then
         echo "feat@local already in installed_plugins.json — skipping"
     else
-        # Insert feat@local entry into plugins object
-        sed -i "s/\"plugins\": {/\"plugins\": {\n    \"feat@local\": [\n      {\n        \"scope\": \"user\",\n        \"installPath\": \"$INSTALL_PATH_JSON\",\n        \"version\": \"0.1.0\",\n        \"installedAt\": \"$TIMESTAMP\",\n        \"lastUpdated\": \"$TIMESTAMP\"\n      }\n    ],/" "$PLUGINS_FILE"
+        # Use python3 with sys.argv to avoid backslash escaping issues
+        python3 -c "
+import json, sys
+path, ts, pf = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(pf, 'r') as f:
+    data = json.load(f)
+data['plugins']['feat@local'] = [{
+    'scope': 'user',
+    'installPath': path,
+    'version': '0.1.0',
+    'installedAt': ts,
+    'lastUpdated': ts
+}]
+with open(pf, 'w') as f:
+    json.dump(data, f, indent=2)
+" "$INSTALL_PATH_WIN" "$TIMESTAMP" "$PLUGINS_FILE"
         echo "Added feat@local to installed_plugins.json"
     fi
 else
