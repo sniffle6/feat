@@ -40,7 +40,7 @@ func runHook() {
 	case "SessionStart":
 		handleSessionStart(&h, os.Stdout)
 	case "PostToolUse":
-		handlePostToolUse(&h)
+		handlePostToolUse(&h, os.Stdout)
 	case "Stop":
 		handleStop(&h, os.Stdout)
 	}
@@ -158,8 +158,11 @@ func handleStop(h *hookInput, w io.Writer) {
 	json.NewEncoder(w).Encode(out)
 }
 
-func handlePostToolUse(h *hookInput) {
+func handlePostToolUse(h *hookInput, w io.Writer) {
+	out := hookOutput{Continue: true}
+
 	if !strings.Contains(h.ToolInput.Command, "git commit") {
+		json.NewEncoder(w).Encode(out)
 		return
 	}
 
@@ -168,16 +171,45 @@ func handlePostToolUse(h *hookInput) {
 	output, err := cmd.Output()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "docket hook: git log: %v\n", err)
+		json.NewEncoder(w).Encode(out)
 		return
 	}
 
+	line := strings.TrimSpace(string(output))
+
+	// Append to commits.log
 	commitsPath := filepath.Join(h.CWD, ".docket", "commits.log")
 	f, err := os.OpenFile(commitsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "docket hook: open commits.log: %v\n", err)
+		json.NewEncoder(w).Encode(out)
 		return
 	}
-	defer f.Close()
+	f.WriteString(line + "\n")
+	f.Close()
 
-	f.WriteString(strings.TrimSpace(string(output)) + "\n")
+	// Find active feature to prompt board-manager dispatch
+	s, err := store.Open(h.CWD)
+	if err != nil {
+		json.NewEncoder(w).Encode(out)
+		return
+	}
+	defer s.Close()
+
+	features, err := s.ListFeatures("in_progress")
+	if err != nil || len(features) == 0 {
+		json.NewEncoder(w).Encode(out)
+		return
+	}
+
+	parts := strings.SplitN(line, "|||", 2)
+	hash := parts[0]
+	msg := ""
+	if len(parts) == 2 {
+		msg = parts[1]
+	}
+
+	out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s\nDispatch board-manager agent (model: sonnet) with: commit %s, message \"%s\", feature_id=\"%s\".",
+		hash, msg, hash, msg, features[0].ID)
+	json.NewEncoder(w).Encode(out)
 }

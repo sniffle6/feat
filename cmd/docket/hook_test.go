@@ -210,8 +210,19 @@ func TestPostToolUseIgnoresNonCommit(t *testing.T) {
 		ToolInput:     toolInput{Command: "go test ./..."},
 	}
 
-	// Should not panic or produce any output
-	handlePostToolUse(h)
+	var buf bytes.Buffer
+	handlePostToolUse(h, &buf)
+
+	var out hookOutput
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if !out.Continue {
+		t.Error("expected Continue to be true")
+	}
+	if out.SystemMessage != "" {
+		t.Errorf("expected no systemMessage for non-commit, got: %s", out.SystemMessage)
+	}
 }
 
 func TestPostToolUseRecordsCommit(t *testing.T) {
@@ -247,8 +258,18 @@ func TestPostToolUseRecordsCommit(t *testing.T) {
 		t.Fatalf("git commit: %v: %s", err, out)
 	}
 
-	// Create .docket dir for commits.log
-	os.MkdirAll(filepath.Join(dir, ".docket"), 0755)
+	// Create .docket dir and an active feature
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := s.AddFeature("Test Feature", "testing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := "in_progress"
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: &status})
+	s.Close()
 
 	h := &hookInput{
 		SessionID:     "test-session",
@@ -258,7 +279,8 @@ func TestPostToolUseRecordsCommit(t *testing.T) {
 		ToolInput:     toolInput{Command: "git commit -m 'test commit message'"},
 	}
 
-	handlePostToolUse(h)
+	var buf bytes.Buffer
+	handlePostToolUse(h, &buf)
 
 	// Verify commits.log has the commit
 	commitsPath := filepath.Join(dir, ".docket", "commits.log")
@@ -273,5 +295,17 @@ func TestPostToolUseRecordsCommit(t *testing.T) {
 	}
 	if !strings.Contains(content, "test commit message") {
 		t.Errorf("expected commit message in log, got: %s", content)
+	}
+
+	// Verify systemMessage prompts board-manager dispatch
+	var out hookOutput
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if !strings.Contains(out.SystemMessage, "board-manager") {
+		t.Errorf("expected board-manager dispatch instruction, got: %s", out.SystemMessage)
+	}
+	if !strings.Contains(out.SystemMessage, f.ID) {
+		t.Errorf("expected feature ID in message, got: %s", out.SystemMessage)
 	}
 }
