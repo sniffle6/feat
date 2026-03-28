@@ -116,6 +116,49 @@ func TestNotesInWorkflow(t *testing.T) {
 	}
 }
 
+func TestBatchAddSubtasks(t *testing.T) {
+	s := testStore(t)
+	s.AddFeature("Batch Test", "")
+
+	// Add 3 subtasks at once
+	s.AddSubtask("batch-test", "Phase 1", 1)
+	s.AddSubtask("batch-test", "Phase 2", 2)
+	s.AddSubtask("batch-test", "Phase 3", 3)
+
+	subtasks, err := s.GetSubtasksForFeature("batch-test", false)
+	if err != nil {
+		t.Fatalf("GetSubtasksForFeature: %v", err)
+	}
+	if len(subtasks) != 3 {
+		t.Fatalf("got %d subtasks, want 3", len(subtasks))
+	}
+	if subtasks[0].Title != "Phase 1" || subtasks[2].Title != "Phase 3" {
+		t.Errorf("subtask titles wrong: %q, %q", subtasks[0].Title, subtasks[2].Title)
+	}
+}
+
+func TestBatchAddTaskItems(t *testing.T) {
+	s := testStore(t)
+	s.AddFeature("Batch Items", "")
+	st, _ := s.AddSubtask("batch-items", "Phase 1", 1)
+
+	// Add 3 items at once
+	s.AddTaskItem(st.ID, "Item A", 1)
+	s.AddTaskItem(st.ID, "Item B", 2)
+	s.AddTaskItem(st.ID, "Item C", 3)
+
+	items, err := s.GetTaskItemsForSubtask(st.ID)
+	if err != nil {
+		t.Fatalf("GetTaskItemsForSubtask: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("got %d items, want 3", len(items))
+	}
+	if items[0].Title != "Item A" || items[2].Title != "Item C" {
+		t.Errorf("item titles wrong: %q, %q", items[0].Title, items[2].Title)
+	}
+}
+
 func TestDevCompleteStatusInWorkflow(t *testing.T) {
 	s := testStore(t)
 

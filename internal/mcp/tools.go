@@ -92,6 +92,18 @@ func registerTools(srv *server.MCPServer, s *store.Store) {
 		mcp.WithString("title", mcp.Required(), mcp.Description("Task item title")),
 	), addTaskItemHandler(s))
 
+	srv.AddTool(mcp.NewTool("add_subtasks",
+		mcp.WithDescription("Batch-add multiple subtasks (phases) to a feature in one call. More token-efficient than calling add_subtask repeatedly."),
+		mcp.WithString("feature_id", mcp.Required(), mcp.Description("Feature slug ID")),
+		mcp.WithString("titles", mcp.Required(), mcp.Description("Pipe-separated subtask titles (e.g., 'Phase 1|Phase 2|Phase 3')")),
+	), addSubtasksHandler(s))
+
+	srv.AddTool(mcp.NewTool("add_task_items",
+		mcp.WithDescription("Batch-add multiple task items to a subtask in one call. More token-efficient than calling add_task_item repeatedly."),
+		mcp.WithString("subtask_id", mcp.Required(), mcp.Description("Parent subtask ID (number)")),
+		mcp.WithString("titles", mcp.Required(), mcp.Description("Pipe-separated task item titles (e.g., 'Write tests|Implement handler|Update docs')")),
+	), addTaskItemsHandler(s))
+
 	srv.AddTool(mcp.NewTool("get_full_context",
 		mcp.WithDescription("Get everything for a feature: all subtasks (including archived), all task items with outcomes and commits, all sessions. For subagent deep dives."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("Feature slug ID")),
@@ -462,6 +474,62 @@ func addTaskItemHandler(s *store.Store) server.ToolHandlerFunc {
 		}
 
 		return mcp.NewToolResultText(fmt.Sprintf("Task item #%d created: %s", item.ID, item.Title)), nil
+	}
+}
+
+func addSubtasksHandler(s *store.Store) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.GetArguments()
+		featureID := args["feature_id"].(string)
+		titlesRaw := args["titles"].(string)
+
+		titles := strings.Split(titlesRaw, "|")
+		subtasks, _ := s.GetSubtasksForFeature(featureID, false)
+		position := len(subtasks) + 1
+
+		var lines []string
+		for _, title := range titles {
+			title = strings.TrimSpace(title)
+			if title == "" {
+				continue
+			}
+			st, err := s.AddSubtask(featureID, title, position)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("failed on %q: %v", title, err)), nil
+			}
+			lines = append(lines, fmt.Sprintf("Subtask #%d: %s", st.ID, st.Title))
+			position++
+		}
+
+		return mcp.NewToolResultText(fmt.Sprintf("Created %d subtasks:\n%s", len(lines), strings.Join(lines, "\n"))), nil
+	}
+}
+
+func addTaskItemsHandler(s *store.Store) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.GetArguments()
+		subtaskID := parseInt64(args["subtask_id"].(string))
+		titlesRaw := args["titles"].(string)
+
+		titles := strings.Split(titlesRaw, "|")
+		items, _ := s.GetTaskItemsForSubtask(subtaskID)
+		position := len(items) + 1
+
+		var lines []string
+		for _, title := range titles {
+			title = strings.TrimSpace(title)
+			if title == "" {
+				continue
+			}
+			item, err := s.AddTaskItem(subtaskID, title, position)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("failed on %q: %v", title, err)), nil
+			}
+			lines = append(lines, fmt.Sprintf("Task item #%d: %s", item.ID, item.Title))
+			position++
+		}
+
+		return mcp.NewToolResultText(fmt.Sprintf("Created %d task items:\n%s", len(lines), strings.Join(lines, "\n"))), nil
 	}
 }
 

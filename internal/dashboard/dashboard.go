@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/sniffle6/claude-docket/internal/store"
@@ -24,7 +25,11 @@ type featureWithProgress struct {
 	SubtaskProgress []subtaskProgress `json:"subtask_progress"`
 }
 
-func NewHandler(s *store.Store, static fs.FS) http.Handler {
+func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler {
+	var devDir string
+	if len(projectDir) > 0 {
+		devDir = projectDir[0]
+	}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/features", func(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +157,11 @@ func NewHandler(s *store.Store, static fs.FS) http.Handler {
 				http.FileServerFS(static).ServeHTTP(w, r)
 				return
 			}
-			if devHTML, err := os.ReadFile("dashboard/index.html"); err == nil {
+			devPath := "dashboard/index.html"
+			if devDir != "" {
+				devPath = filepath.Join(devDir, "dashboard", "index.html")
+			}
+			if devHTML, err := os.ReadFile(devPath); err == nil {
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
 				w.Write(devHTML)
 				return

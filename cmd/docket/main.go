@@ -81,7 +81,7 @@ func runServe() {
 	os.WriteFile(portFile, []byte(fmt.Sprintf("%d", port)), 0644)
 
 	go func() {
-		handler := dashboard.NewHandler(s, staticfiles.StaticFS)
+		handler := dashboard.NewHandler(s, staticfiles.StaticFS, dir)
 		addr := fmt.Sprintf(":%d", port)
 		log.Printf("Dashboard: http://localhost:%d", port)
 		if err := http.ListenAndServe(addr, handler); err != nil {
