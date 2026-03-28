@@ -68,34 +68,51 @@ func handleSessionStart(h *hookInput, w io.Writer) {
 
 	if len(features) == 0 {
 		out.SystemMessage = "[docket] No active features. Use docket MCP tools to create one."
-	} else {
-		var msg strings.Builder
-		msg.WriteString("[docket] Active features:\n")
-		for i, f := range features {
-			msg.WriteString(fmt.Sprintf("- %s (id: %s)", f.Title, f.ID))
-			if f.LeftOff != "" {
-				msg.WriteString(fmt.Sprintf(" — left off: %s", f.LeftOff))
-			}
-			msg.WriteString("\n")
+		json.NewEncoder(w).Encode(out)
+		return
+	}
 
-			if i == 0 {
-				subtasks, err := s.GetSubtasksForFeature(f.ID, false)
-				if err == nil {
-					for _, st := range subtasks {
-						for _, item := range st.Items {
-							if !item.Checked {
-								msg.WriteString(fmt.Sprintf("Next task: %s\n", item.Title))
-								goto done
-							}
-						}
+	var msg strings.Builder
+	topFeature := features[0]
+	handoffPath := filepath.Join(h.CWD, ".docket", "handoff", topFeature.ID+".md")
+
+	if content, err := os.ReadFile(handoffPath); err == nil {
+		msg.WriteString("[docket] Session context:\n\n")
+		msg.Write(content)
+	} else {
+		// Fallback: list features with left_off and next task
+		msg.WriteString("[docket] Active features:\n")
+		msg.WriteString(fmt.Sprintf("- %s (id: %s)", topFeature.Title, topFeature.ID))
+		if topFeature.LeftOff != "" {
+			msg.WriteString(fmt.Sprintf(" — left off: %s", topFeature.LeftOff))
+		}
+		msg.WriteString("\n")
+
+		subtasks, err := s.GetSubtasksForFeature(topFeature.ID, false)
+		if err == nil {
+			for _, st := range subtasks {
+				for _, item := range st.Items {
+					if !item.Checked {
+						msg.WriteString(fmt.Sprintf("Next task: %s\n", item.Title))
+						goto doneNextTask
 					}
 				}
 			}
-		done:
 		}
-		out.SystemMessage = msg.String()
+	doneNextTask:
 	}
 
+	// Other features: pointers or one-liners
+	for _, f := range features[1:] {
+		otherHandoff := filepath.Join(h.CWD, ".docket", "handoff", f.ID+".md")
+		if _, err := os.Stat(otherHandoff); err == nil {
+			msg.WriteString(fmt.Sprintf("\n[docket] Handoff available: .docket/handoff/%s.md", f.ID))
+		} else {
+			msg.WriteString(fmt.Sprintf("\n[docket] Also active: %s (id: %s)", f.Title, f.ID))
+		}
+	}
+
+	out.SystemMessage = msg.String()
 	json.NewEncoder(w).Encode(out)
 }
 

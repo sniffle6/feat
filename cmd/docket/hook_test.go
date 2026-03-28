@@ -304,6 +304,124 @@ func TestStopCleansStaleHandoffs(t *testing.T) {
 	}
 }
 
+func TestSessionStartInjectsHandoff(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := s.AddFeature("My Feature", "testing handoff injection")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := "in_progress"
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: &status})
+	s.Close()
+
+	// Write a handoff file
+	handoffDir := filepath.Join(dir, ".docket", "handoff")
+	os.MkdirAll(handoffDir, 0755)
+	handoffContent := "# Handoff: My Feature\n\n## Status\nin_progress | Progress: 0/0\n"
+	os.WriteFile(filepath.Join(handoffDir, f.ID+".md"), []byte(handoffContent), 0644)
+
+	h := &hookInput{
+		SessionID:     "test-session",
+		CWD:           dir,
+		HookEventName: "SessionStart",
+	}
+
+	var buf bytes.Buffer
+	handleSessionStart(h, &buf)
+
+	var out hookOutput
+	json.Unmarshal(buf.Bytes(), &out)
+
+	if !strings.Contains(out.SystemMessage, "# Handoff: My Feature") {
+		t.Errorf("expected full handoff content in message, got: %s", out.SystemMessage)
+	}
+	if !strings.Contains(out.SystemMessage, "[docket] Session context:") {
+		t.Errorf("expected session context prefix, got: %s", out.SystemMessage)
+	}
+}
+
+func TestSessionStartFallsBackWithoutHandoff(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := s.AddFeature("Fallback Feature", "no handoff file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := "in_progress"
+	leftOff := "doing stuff"
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: &status, LeftOff: &leftOff})
+	s.Close()
+
+	h := &hookInput{
+		SessionID:     "test-session",
+		CWD:           dir,
+		HookEventName: "SessionStart",
+	}
+
+	var buf bytes.Buffer
+	handleSessionStart(h, &buf)
+
+	var out hookOutput
+	json.Unmarshal(buf.Bytes(), &out)
+
+	// Should fall back to current behavior
+	if !strings.Contains(out.SystemMessage, "Fallback Feature") {
+		t.Errorf("expected feature title in fallback, got: %s", out.SystemMessage)
+	}
+	if !strings.Contains(out.SystemMessage, "doing stuff") {
+		t.Errorf("expected left_off in fallback, got: %s", out.SystemMessage)
+	}
+}
+
+func TestSessionStartSecondFeatureShowsPointer(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.AddFeature("Feature A", "first")
+	s.AddFeature("Feature B", "second")
+	s.UpdateFeature("feature-b", store.FeatureUpdate{Status: strPtr("in_progress")})
+	s.UpdateFeature("feature-a", store.FeatureUpdate{Status: strPtr("in_progress")})
+	s.Close()
+
+	// Write handoff for both
+	handoffDir := filepath.Join(dir, ".docket", "handoff")
+	os.MkdirAll(handoffDir, 0755)
+	os.WriteFile(filepath.Join(handoffDir, "feature-a.md"), []byte("# Handoff: Feature A\n"), 0644)
+	os.WriteFile(filepath.Join(handoffDir, "feature-b.md"), []byte("# Handoff: Feature B\n"), 0644)
+
+	h := &hookInput{
+		SessionID:     "test-session",
+		CWD:           dir,
+		HookEventName: "SessionStart",
+	}
+
+	var buf bytes.Buffer
+	handleSessionStart(h, &buf)
+
+	var out hookOutput
+	json.Unmarshal(buf.Bytes(), &out)
+
+	// Second feature should be a pointer, not full content
+	if strings.Contains(out.SystemMessage, "# Handoff: Feature B") {
+		t.Errorf("second feature should be a pointer, not full content: %s", out.SystemMessage)
+	}
+	if !strings.Contains(out.SystemMessage, ".docket/handoff/feature-b.md") {
+		t.Errorf("expected pointer to second feature handoff, got: %s", out.SystemMessage)
+	}
+}
+
 func TestPostToolUseRecordsCommit(t *testing.T) {
 	dir := t.TempDir()
 
