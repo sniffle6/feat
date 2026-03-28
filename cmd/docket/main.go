@@ -21,7 +21,7 @@ import (
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: docket <command>")
-		fmt.Fprintln(os.Stderr, "commands: serve, init, version")
+		fmt.Fprintln(os.Stderr, "commands: serve, init, hook, version")
 		os.Exit(1)
 	}
 
@@ -30,6 +30,8 @@ func main() {
 		fmt.Println("docket v0.1.0")
 	case "init":
 		runInit()
+	case "hook":
+		runHook()
 	case "serve":
 		runServe()
 	default:
