@@ -21,7 +21,7 @@ import (
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: docket <command>")
-		fmt.Fprintln(os.Stderr, "commands: serve, init, update, hook, version")
+		fmt.Fprintln(os.Stderr, "commands: serve, init, update, export, hook, version")
 		os.Exit(1)
 	}
 
@@ -36,6 +36,8 @@ func main() {
 		runServe()
 	case "update":
 		runUpdate()
+	case "export":
+		runExport()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(1)
