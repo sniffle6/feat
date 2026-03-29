@@ -113,6 +113,14 @@ func registerTools(srv *server.MCPServer, s *store.Store) {
 		mcp.WithDescription("Get everything for a feature: all subtasks (including archived), all task items with outcomes and commits, all sessions. For subagent deep dives."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("Feature slug ID")),
 	), getFullContextHandler(s))
+
+	srv.AddTool(mcp.NewTool("add_decision",
+		mcp.WithDescription("Log a decision on a feature. Records what approach was considered, whether it was accepted or rejected, and why. Prevents re-exploring dead ends across sessions."),
+		mcp.WithString("feature_id", mcp.Required(), mcp.Description("Feature slug ID")),
+		mcp.WithString("approach", mcp.Required(), mcp.Description("What was considered (e.g., 'Use websockets for real-time updates')")),
+		mcp.WithString("outcome", mcp.Required(), mcp.Description("accepted or rejected")),
+		mcp.WithString("reason", mcp.Required(), mcp.Description("Why — one-liner (e.g., 'Too complex for MVP, polling sufficient')")),
+	), addDecisionHandler(s))
 }
 
 func addFeatureHandler(s *store.Store) server.ToolHandlerFunc {
@@ -602,6 +610,27 @@ func getFullContextHandler(s *store.Store) server.ToolHandlerFunc {
 			Sessions: sessions,
 		}, "", "  ")
 		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func addDecisionHandler(s *store.Store) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.GetArguments()
+		featureID := args["feature_id"].(string)
+		approach := args["approach"].(string)
+		outcome := args["outcome"].(string)
+		reason := args["reason"].(string)
+
+		if outcome != "accepted" && outcome != "rejected" {
+			return mcp.NewToolResultError("outcome must be 'accepted' or 'rejected'"), nil
+		}
+
+		d, err := s.AddDecision(featureID, approach, outcome, reason)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(fmt.Sprintf("Decision #%d logged: %s %s — %s", d.ID, outcome, approach, reason)), nil
 	}
 }
 
