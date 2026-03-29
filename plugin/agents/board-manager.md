@@ -24,7 +24,7 @@ You have access to these docket MCP tools (prefixed `mcp__plugin_docket_docket__
 | `add_subtask` | Creating a phase manually. Params: `feature_id` (required), `title` (required). |
 | `add_task_item` | Adding a task to a subtask. Params: `subtask_id` (required), `title` (required). |
 
-You also have Read, Grep, and Glob to verify files exist before referencing them.
+You also have Read, Write, Grep, and Glob for file operations (reading context, writing handoff enrichments, verifying files exist).
 
 ## How to handle each event
 

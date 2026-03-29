@@ -239,7 +239,43 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 		msg = parts[1]
 	}
 
-	out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s\nDispatch board-manager agent (model: sonnet) with: commit %s, message \"%s\", feature_id=\"%s\".",
-		hash, msg, hash, msg, features[0].ID)
+	// Auto-import plan files from this commit
+	var importMsg string
+	changedFiles := getCommitFiles(h.CWD, hash)
+	for _, cf := range changedFiles {
+		if isPlanFile(cf) {
+			absPath := filepath.Join(h.CWD, cf)
+			if _, statErr := os.Stat(absPath); statErr == nil {
+				result, importErr := s.ImportPlan(features[0].ID, absPath)
+				if importErr == nil {
+					importMsg = fmt.Sprintf("\n[docket] Auto-imported plan: %d subtasks, %d items from %s", result.SubtaskCount, result.TaskItemCount, cf)
+				}
+				break // only import first plan file found
+			}
+		}
+	}
+
+	out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s\nDispatch board-manager agent (model: sonnet) with: commit %s, message \"%s\", feature_id=\"%s\".%s",
+		hash, msg, hash, msg, features[0].ID, importMsg)
 	json.NewEncoder(w).Encode(out)
+}
+
+func getCommitFiles(dir, hash string) []string {
+	cmd := exec.Command("git", "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", hash)
+	cmd.Dir = dir
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var files []string
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line != "" {
+			files = append(files, line)
+		}
+	}
+	return files
+}
+
+func isPlanFile(path string) bool {
+	return strings.Contains(path, "plans/") || strings.HasSuffix(path, "-plan.md")
 }

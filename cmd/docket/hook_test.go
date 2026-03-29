@@ -422,6 +422,109 @@ func TestSessionStartSecondFeatureShowsPointer(t *testing.T) {
 	}
 }
 
+func TestPostToolUseAutoImportsPlan(t *testing.T) {
+	dir := t.TempDir()
+
+	// Init git repo
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+	}
+
+	// Create a plan file and commit it
+	planDir := filepath.Join(dir, "docs", "superpowers", "plans")
+	os.MkdirAll(planDir, 0755)
+	planContent := `# Test Plan
+
+> For agentic workers
+
+### Task 1: Add widget
+
+**Files:**
+- Create: ` + "`src/widget.go`" + `
+
+- [ ] **Step 1: Write the test**
+- [ ] **Step 2: Implement widget**
+- [ ] **Step 3: Commit**
+
+### Task 2: Add handler
+
+- [ ] **Step 1: Write handler test**
+- [ ] **Step 2: Implement handler**
+`
+	planPath := filepath.Join(planDir, "2026-03-28-test-plan.md")
+	os.WriteFile(planPath, []byte(planContent), 0644)
+
+	addCmd := exec.Command("git", "add", ".")
+	addCmd.Dir = dir
+	if out, err := addCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v: %s", err, out)
+	}
+
+	commitCmd := exec.Command("git", "commit", "-m", "docs: add test plan")
+	commitCmd.Dir = dir
+	if out, err := commitCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v: %s", err, out)
+	}
+
+	// Create an active feature
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := s.AddFeature("Test Feature", "testing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := "in_progress"
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: &status})
+	s.Close()
+
+	h := &hookInput{
+		SessionID:     "test-session",
+		CWD:           dir,
+		HookEventName: "PostToolUse",
+		ToolName:      "Bash",
+		ToolInput:     toolInput{Command: "git commit -m 'docs: add test plan'"},
+	}
+
+	var buf bytes.Buffer
+	handlePostToolUse(h, &buf)
+
+	// Verify plan was auto-imported
+	s2, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+
+	subtasks, err := s2.GetSubtasksForFeature(f.ID, false)
+	if err != nil {
+		t.Fatalf("get subtasks: %v", err)
+	}
+	if len(subtasks) != 2 {
+		t.Fatalf("expected 2 subtasks from plan import, got %d", len(subtasks))
+	}
+	if subtasks[0].Title != "Task 1: Add widget" {
+		t.Errorf("subtask 0 title = %q, want %q", subtasks[0].Title, "Task 1: Add widget")
+	}
+
+	// Verify system message mentions import
+	var out hookOutput
+	json.Unmarshal(buf.Bytes(), &out)
+	if !strings.Contains(out.SystemMessage, "imported") {
+		t.Errorf("expected import mention in system message, got: %s", out.SystemMessage)
+	}
+}
+
 func TestPostToolUseRecordsCommit(t *testing.T) {
 	dir := t.TempDir()
 
