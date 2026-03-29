@@ -14,7 +14,7 @@ This project uses ` + "`docket`" + ` for feature tracking. Dashboard: http://loc
 
 **Larger features** (multi-step, plan-driven, complex):
 
-Start of work — call ` + "`get_ready`" + ` to find existing features, then dispatch ` + "`board-manager`" + ` agent (model: sonnet) to create or find a card. Use ` + "`type`" + ` param (feature/bugfix/chore/spike) to auto-generate subtask templates.
+Start of work (after any brainstorming/planning) — call ` + "`get_ready`" + ` to find existing features, then dispatch ` + "`board-manager`" + ` agent (model: sonnet) to create or find a card. Use ` + "`type`" + ` param (feature/bugfix/chore/spike) to auto-generate subtask templates.
 
 After a commit — use **direct MCP calls**, not agent dispatch:
 - ` + "`update_feature`" + ` — set left_off, key_files, status. Completion gate blocks ` + "`done`" + ` with unchecked items — pass ` + "`force=true`" + ` + ` + "`force_reason`" + ` to override.
@@ -22,7 +22,9 @@ After a commit — use **direct MCP calls**, not agent dispatch:
 - ` + "`add_decision`" + ` — record notable decisions (accepted/rejected with reason)
 - ` + "`add_issue`" + ` / ` + "`resolve_issue`" + ` — track bugs found during work
 
-Only dispatch board-manager when the update needs judgment (plan imports needing restructuring, new subtasks needed).
+Plan files committed during work are auto-imported by hooks. Only dispatch board-manager when the update needs judgment (restructuring imported plans, creating new subtasks).
+
+After subagent work — subagent commits bypass hooks. Use direct MCP calls to batch-update the feature.
 
 Use ` + "`get_context`" + ` (not ` + "`get_feature`" + `) for routine status checks — it's token-efficient (~15 lines).
 
