@@ -339,8 +339,8 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 		out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s%s\nDispatch board-manager agent (model: sonnet) to structure imported plan: feature_id=\"%s\", commit %s.",
 			hash, msg, importMsg, features[0].ID, hash)
 	} else {
-		// Normal commit — direct MCP calls preferred
-		out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s\nUpdate docket directly: call update_feature(id=\"%s\", left_off=<what changed>, key_files=<changed files>) and complete_task_item/complete_task_items if applicable. Only dispatch board-manager if new subtasks/items are needed.",
+		// Normal commit — direct MCP calls only
+		out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s\nUpdate feature %q: update_feature (left_off, key_files) and complete_task_item if applicable.",
 			hash, msg, features[0].ID)
 	}
 	json.NewEncoder(w).Encode(out)

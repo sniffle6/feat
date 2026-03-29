@@ -752,13 +752,13 @@ func TestPostToolUseRecordsCommit(t *testing.T) {
 		t.Errorf("expected commit message in log, got: %s", content)
 	}
 
-	// Verify systemMessage prompts board-manager dispatch
+	// Verify systemMessage prompts direct MCP update
 	var out hookOutput
 	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
 		t.Fatalf("decode output: %v", err)
 	}
-	if !strings.Contains(out.SystemMessage, "board-manager") {
-		t.Errorf("expected board-manager dispatch instruction, got: %s", out.SystemMessage)
+	if !strings.Contains(out.SystemMessage, "Update feature") {
+		t.Errorf("expected direct update instruction, got: %s", out.SystemMessage)
 	}
 	if !strings.Contains(out.SystemMessage, f.ID) {
 		t.Errorf("expected feature ID in message, got: %s", out.SystemMessage)
