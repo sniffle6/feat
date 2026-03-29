@@ -1,6 +1,6 @@
 ---
 name: board-manager
-description: Manages the docket board — creates features, updates status, completes tasks. Dispatch after commits and at start of work.
+description: Manages the docket board — creates features, imports plans, restructures subtasks. Dispatch only for complex operations (new features, plan imports, restructuring). Simple updates (update_feature, complete_task_item) should use direct MCP calls instead.
 model: sonnet
 ---
 
@@ -23,6 +23,9 @@ You have access to these docket MCP tools (prefixed `mcp__plugin_docket_docket__
 | `complete_task_item` | Marking a task item done. Params: `id` (task item ID, required), `outcome` (required), `commit_hash`, `key_files`. |
 | `add_subtask` | Creating a phase manually. Params: `feature_id` (required), `title` (required). |
 | `add_task_item` | Adding a task to a subtask. Params: `subtask_id` (required), `title` (required). |
+| `add_issue` | Logging a bug found during work. Params: `feature_id` (required), `description` (required), `task_item_id` (optional). |
+| `resolve_issue` | Marking a bug as fixed. Params: `id` (required), `commit_hash` (optional). |
+| `list_issues` | Checking open bugs. Params: `feature_id` (optional, omit for all). |
 
 You also have Read, Write, Grep, and Glob for file operations (reading context, writing handoff enrichments, verifying files exist).
 
