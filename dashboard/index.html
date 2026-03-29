@@ -194,6 +194,20 @@
     border-top: 1px solid var(--border);
   }
 
+  .issue-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #C73A3A20;
+    color: var(--blocked);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-top: 6px;
+  }
+  html.light .issue-badge { background: #FFD0D0; color: #8A2020; }
+
   /* Done cards dimmed */
   .col-done .card { opacity: 0.65; }
   .col-done .card:hover { opacity: 1; }
@@ -425,6 +439,30 @@
   .decision-text { flex: 1; }
   .decision-approach { color: var(--text); }
   .decision-reason { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  .issue-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+  }
+  .issue-item:first-child { border-top: none; }
+  .issue-status {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .issue-open { background: #C73A3A20; color: var(--blocked); }
+  .issue-resolved { background: #95E06C20; color: var(--done); }
+  html.light .issue-open { background: #FFD0D0; color: #8A2020; }
+  html.light .issue-resolved { background: #D5F0D0; color: #2A6A22; }
+  .issue-text { flex: 1; }
+  .issue-description { color: var(--text); }
+  .issue-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -550,6 +588,13 @@ function render() {
         loDiv.className = 'card-leftoff';
         loDiv.textContent = leftoff;
         card.appendChild(loDiv);
+      }
+
+      if (f.issue_count > 0) {
+        var issueBadge = document.createElement('div');
+        issueBadge.className = 'issue-badge';
+        issueBadge.textContent = '! ' + f.issue_count + ' issue' + (f.issue_count !== 1 ? 's' : '');
+        card.appendChild(issueBadge);
       }
 
       col.appendChild(card);
@@ -753,6 +798,50 @@ async function showDetail(id) {
       }
       decDiv.appendChild(textDiv);
       panel.appendChild(decDiv);
+    }
+  }
+
+  // Issues
+  var issues = data.issues || [];
+  if (issues.length > 0) {
+    var issLabel = document.createElement('div');
+    issLabel.className = 'panel-section-label';
+    var openCount = issues.filter(function(i) { return i.status === 'open'; }).length;
+    issLabel.textContent = 'Issues' + (openCount > 0 ? ' (' + openCount + ' open)' : '');
+    panel.appendChild(issLabel);
+
+    for (var ii = 0; ii < issues.length; ii++) {
+      var iss = issues[ii];
+      var issDiv = document.createElement('div');
+      issDiv.className = 'issue-item';
+
+      var statusSpan = document.createElement('span');
+      statusSpan.className = 'issue-status issue-' + iss.status;
+      statusSpan.textContent = iss.status;
+      issDiv.appendChild(statusSpan);
+
+      var textDiv = document.createElement('div');
+      textDiv.className = 'issue-text';
+      var descDiv = document.createElement('div');
+      descDiv.className = 'issue-description';
+      descDiv.textContent = iss.description;
+      textDiv.appendChild(descDiv);
+
+      var meta = [];
+      if (iss.task_item_id) {
+        meta.push('Task #' + iss.task_item_id);
+      }
+      if (iss.resolved_commit) {
+        meta.push('Fix: ' + iss.resolved_commit.slice(0, 7));
+      }
+      if (meta.length > 0) {
+        var metaDiv = document.createElement('div');
+        metaDiv.className = 'issue-meta';
+        metaDiv.textContent = meta.join(' \u00B7 ');
+        textDiv.appendChild(metaDiv);
+      }
+      issDiv.appendChild(textDiv);
+      panel.appendChild(issDiv);
     }
   }
 
