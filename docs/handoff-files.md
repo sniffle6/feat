@@ -12,9 +12,9 @@ When a Claude Code session ends and a new one starts, the agent loses nuance -- 
 
 **Two-tier generation:**
 
-1. **Stop hook (mechanical)** -- every session end, the hook reads the database and writes a structured markdown file with: status, progress, left_off, next 3 tasks, key files, recent sessions, subtask progress. No LLM involved -- instant and free.
+1. **Stop hook (re-trigger phase)** -- on the second stop attempt (`stop_hook_active=true`), the hook reads the database and writes a structured markdown file with: status, progress, left_off, next 3 tasks, key files, recent sessions, subtask progress. No LLM involved -- instant and free.
 
-2. **Board-manager (enriched)** -- when dispatched after commits, the board-manager reads the mechanical handoff and appends synthesized sections: decisions & context, gotchas, and recommended approach.
+2. **Board-manager (enriched)** -- when dispatched after commits, the board-manager reads the mechanical handoff and appends synthesized sections: decisions & context, gotchas, and recommended approach. These enrichment sections are preserved across rewrites (the Stop hook extracts and re-appends them).
 
 **Session start injection:**
 
@@ -26,7 +26,7 @@ The Stop hook deletes handoff files for features that are no longer in_progress.
 
 ## Gotchas
 
-- Handoff files are overwritten every session end. Agent-enriched sections are lost and re-generated. This is intentional -- the mechanical baseline is always the source of truth.
+- The mechanical baseline is rewritten every session end, but agent-enriched sections (Decisions & Context, Gotchas, Recommended Approach) are extracted from the existing file and re-appended.
 - If no handoff file exists (first session for a feature), the SessionStart hook falls back to listing features with left_off text.
 - Handoff files are in `.docket/` which should be in `.gitignore`.
 

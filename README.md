@@ -63,7 +63,7 @@ The plugin installs three lifecycle hooks:
 |------|-------------|
 | **SessionStart** | Injects active feature context and handoff files into the conversation |
 | **PostToolUse** (Bash) | Detects `git commit` commands, records commit hashes to `.docket/commits.log`, auto-imports plan files |
-| **Stop** | Logs the session to SQLite from commit messages, generates handoff files, cleans up |
+| **Stop** | Two-phase: blocks to prompt Claude for a rich AI-generated session summary via `log_session`, then writes handoff files on re-trigger |
 
 No manual tracking needed. See [docs/docket-hooks.md](docs/docket-hooks.md) for details.
 
@@ -104,14 +104,20 @@ Each feature can have decisions logged against it — what was considered, wheth
 | `complete_task_item` | Mark a task done with outcome and commit hash. |
 | `complete_task_items` | Batch complete tasks (JSON array). |
 | `add_decision` | Log an approach decision (accepted/rejected with reason). |
+| `add_issue` | Log a bug/issue against a feature. |
+| `resolve_issue` | Mark an issue as resolved with optional commit hash. |
+| `list_issues` | List open issues, optionally filtered by feature. |
+| `quick_track` | One-call tracking for small tasks (creates feature + logs session). |
 
 ## Dashboard
 
 Run `/docket` to open the dashboard, or check `.docket/port` for the port number.
 
 - **Kanban board**: Planned / In Progress / Blocked / Dev Complete / Done
-- Click a card for full detail — session history, subtasks, decisions, key files
-- Edit "left off" notes inline
+- Click a card for full detail — session history, subtasks, decisions, issues, key files
+- Edit notes inline per feature
+- Create and resolve issues inline
+- Issue badges on feature cards with open bug counts
 - Reassign unlinked sessions to features
 - Dark/light theme toggle
 
@@ -134,6 +140,9 @@ The installed plugin provides:
 - [docs/docket-hooks.md](docs/docket-hooks.md) — How automatic session tracking works
 - [docs/handoff-files.md](docs/handoff-files.md) — Cross-session context handoff
 - [docs/decision-log.md](docs/decision-log.md) — Decision tracking per feature
+- [docs/issue-tracking.md](docs/issue-tracking.md) — Bug/issue tracking per feature
+- [docs/quick-track.md](docs/quick-track.md) — Lightweight one-call tracking for small tasks
+- [docs/mcp-stability.md](docs/mcp-stability.md) — SQLite contention and crash prevention
 - [docs/dark-mode-toggle.md](docs/dark-mode-toggle.md) — Dashboard theming and dev mode
 - [plugin/README.md](plugin/README.md) — Plugin setup and per-project CLAUDE.md snippet
 

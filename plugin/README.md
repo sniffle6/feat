@@ -17,19 +17,6 @@ Run `install.sh` from the docket repo root. It builds the binary and installs th
 
 ## Per-project setup
 
-Run `/docket-init` in any project to set up tracking automatically, or add this to your project's CLAUDE.md manually:
+Run `/docket-init` in any project to set up tracking automatically. To update the snippet in an existing project, run `/docket-update`.
 
-    ## Feature Tracking (docket)
-
-    This project uses `docket` for feature tracking. Dashboard: http://localhost:<port> (or run `/docket`).
-
-    Dispatch the `board-manager` agent (model: sonnet) at these points:
-    1. **Before writing any code for a new task** — if the user asks to build, fix, or add something, dispatch board-manager FIRST to create or find a feature card. Do not write code until the card exists. Skip only for questions, reviews, and lookups.
-    2. **After a commit** — pass commit hash, message, files, feature ID
-    3. **After subagent implementation work** — subagent commits bypass PostToolUse hooks. After an implementer subagent returns with commits, dispatch board-manager with all new commit hashes, messages, and files. Don't wait for per-commit dispatches — batch them.
-
-    Session logging is handled automatically by the Stop hook (no agent dispatch needed).
-
-    Carry the feature ID the agent returns across dispatches. `get_ready` stays in main session.
-
-    **If user rejects a board-manager dispatch**, fix the issue (e.g., missing context) and retry — don't silently drop the dispatch for the rest of the session.
+The snippet added to CLAUDE.md instructs Claude to use board-manager for feature creation and direct MCP calls (`update_feature`, `complete_task_item`, `add_decision`) for post-commit updates. Board-manager is only dispatched after commits when judgment is needed (plan imports, new subtasks, restructuring). Session logging and handoff files are handled automatically by the Stop hook.
