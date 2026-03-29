@@ -463,6 +463,41 @@
   .issue-text { flex: 1; }
   .issue-description { color: var(--text); }
   .issue-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .issue-resolve-btn {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 14px;
+    flex-shrink: 0; transition: all 0.15s;
+  }
+  .issue-resolve-btn:hover { border-color: var(--done); color: var(--done); }
+  .add-issue-btn {
+    background: var(--card-bg); border: 1px dashed var(--border); color: var(--muted);
+    width: 100%; padding: 8px; border-radius: 6px; cursor: pointer;
+    font-size: 13px; margin-top: 8px; transition: all 0.15s;
+  }
+  .add-issue-btn:hover { border-color: var(--primary); color: var(--primary); }
+  .issue-form { margin-top: 8px; }
+  .issue-input {
+    width: 100%; background: var(--input-bg); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 8px; font-size: 13px;
+    font-family: inherit; resize: vertical;
+  }
+  .issue-input:focus { outline: none; border-color: var(--focus); }
+  .issue-select {
+    width: 100%; background: var(--input-bg); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 8px; font-size: 13px;
+    font-family: inherit; margin-top: 6px;
+  }
+  .issue-select:focus { outline: none; border-color: var(--focus); }
+  .issue-submit-btn {
+    background: var(--primary); border: none; color: #fff; padding: 6px 16px;
+    border-radius: 4px; cursor: pointer; font-size: 13px;
+  }
+  .issue-submit-btn:hover { opacity: 0.9; }
+  .issue-cancel-btn {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;
+  }
+  .issue-cancel-btn:hover { border-color: var(--text); color: var(--text); }
 </style>
 </head>
 <body>
@@ -803,47 +838,128 @@ async function showDetail(id) {
 
   // Issues
   var issues = data.issues || [];
-  if (issues.length > 0) {
-    var issLabel = document.createElement('div');
-    issLabel.className = 'panel-section-label';
-    var openCount = issues.filter(function(i) { return i.status === 'open'; }).length;
-    issLabel.textContent = 'Issues' + (openCount > 0 ? ' (' + openCount + ' open)' : '');
-    panel.appendChild(issLabel);
+  var issLabel = document.createElement('div');
+  issLabel.className = 'panel-section-label';
+  var openCount = issues.filter(function(i) { return i.status === 'open'; }).length;
+  issLabel.textContent = 'Issues' + (openCount > 0 ? ' (' + openCount + ' open)' : '');
+  panel.appendChild(issLabel);
 
-    for (var ii = 0; ii < issues.length; ii++) {
-      var iss = issues[ii];
-      var issDiv = document.createElement('div');
-      issDiv.className = 'issue-item';
+  for (var ii = 0; ii < issues.length; ii++) {
+    var iss = issues[ii];
+    var issDiv = document.createElement('div');
+    issDiv.className = 'issue-item';
 
-      var statusSpan = document.createElement('span');
-      statusSpan.className = 'issue-status issue-' + iss.status;
-      statusSpan.textContent = iss.status;
-      issDiv.appendChild(statusSpan);
+    var statusSpan = document.createElement('span');
+    statusSpan.className = 'issue-status issue-' + iss.status;
+    statusSpan.textContent = iss.status;
+    issDiv.appendChild(statusSpan);
 
-      var textDiv = document.createElement('div');
-      textDiv.className = 'issue-text';
-      var descDiv = document.createElement('div');
-      descDiv.className = 'issue-description';
-      descDiv.textContent = iss.description;
-      textDiv.appendChild(descDiv);
+    var textDiv = document.createElement('div');
+    textDiv.className = 'issue-text';
+    var descDiv = document.createElement('div');
+    descDiv.className = 'issue-description';
+    descDiv.textContent = iss.description;
+    textDiv.appendChild(descDiv);
 
-      var meta = [];
-      if (iss.task_item_id) {
-        meta.push('Task #' + iss.task_item_id);
-      }
-      if (iss.resolved_commit) {
-        meta.push('Fix: ' + iss.resolved_commit.slice(0, 7));
-      }
-      if (meta.length > 0) {
-        var metaDiv = document.createElement('div');
-        metaDiv.className = 'issue-meta';
-        metaDiv.textContent = meta.join(' \u00B7 ');
-        textDiv.appendChild(metaDiv);
-      }
-      issDiv.appendChild(textDiv);
-      panel.appendChild(issDiv);
+    var meta = [];
+    if (iss.task_item_id) {
+      meta.push('Task #' + iss.task_item_id);
+    }
+    if (iss.resolved_commit) {
+      meta.push('Fix: ' + iss.resolved_commit.slice(0, 7));
+    }
+    if (meta.length > 0) {
+      var metaDiv = document.createElement('div');
+      metaDiv.className = 'issue-meta';
+      metaDiv.textContent = meta.join(' \u00B7 ');
+      textDiv.appendChild(metaDiv);
+    }
+    issDiv.appendChild(textDiv);
+
+    if (iss.status === 'open') {
+      var resolveBtn = document.createElement('button');
+      resolveBtn.className = 'issue-resolve-btn';
+      resolveBtn.textContent = '\u2713';
+      resolveBtn.title = 'Resolve issue';
+      (function(issueId, featureId) {
+        resolveBtn.onclick = function(e) {
+          e.stopPropagation();
+          resolveIssue(issueId, featureId);
+        };
+      })(iss.id, f.id);
+      issDiv.appendChild(resolveBtn);
+    }
+
+    panel.appendChild(issDiv);
+  }
+
+  // Add issue form
+  var addIssueBtn = document.createElement('button');
+  addIssueBtn.className = 'add-issue-btn';
+  addIssueBtn.textContent = '+ Add Issue';
+  panel.appendChild(addIssueBtn);
+
+  var issueForm = document.createElement('div');
+  issueForm.className = 'issue-form';
+  issueForm.style.display = 'none';
+
+  var issueDesc = document.createElement('textarea');
+  issueDesc.className = 'issue-input';
+  issueDesc.placeholder = 'Describe the bug...';
+  issueDesc.rows = 3;
+  issueForm.appendChild(issueDesc);
+
+  var issueTaskSelect = document.createElement('select');
+  issueTaskSelect.className = 'issue-select';
+  var defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = 'Link to task item (optional)';
+  issueTaskSelect.appendChild(defaultOpt);
+  for (var si = 0; si < subtasks.length; si++) {
+    var st = subtasks[si];
+    if (st.archived) continue;
+    var items = st.items || [];
+    for (var ti = 0; ti < items.length; ti++) {
+      var opt = document.createElement('option');
+      opt.value = items[ti].id;
+      opt.textContent = st.title + ' \u203A ' + items[ti].title;
+      issueTaskSelect.appendChild(opt);
     }
   }
+  issueForm.appendChild(issueTaskSelect);
+
+  var issueActions = document.createElement('div');
+  issueActions.style.cssText = 'display:flex;gap:8px;margin-top:6px';
+  var submitBtn = document.createElement('button');
+  submitBtn.className = 'issue-submit-btn';
+  submitBtn.textContent = 'Submit';
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'issue-cancel-btn';
+  cancelBtn.textContent = 'Cancel';
+  issueActions.appendChild(submitBtn);
+  issueActions.appendChild(cancelBtn);
+  issueForm.appendChild(issueActions);
+  panel.appendChild(issueForm);
+
+  addIssueBtn.onclick = function() {
+    addIssueBtn.style.display = 'none';
+    issueForm.style.display = 'block';
+    issueDesc.focus();
+  };
+  cancelBtn.onclick = function() {
+    issueForm.style.display = 'none';
+    addIssueBtn.style.display = '';
+    issueDesc.value = '';
+    issueTaskSelect.value = '';
+  };
+  (function(featureId) {
+    submitBtn.onclick = function() {
+      var desc = issueDesc.value.trim();
+      if (!desc) return;
+      var taskItemId = issueTaskSelect.value ? parseInt(issueTaskSelect.value) : null;
+      submitIssue(featureId, desc, taskItemId);
+    };
+  })(f.id);
 
   // Activity
   var actToggle = document.createElement('div');
@@ -919,6 +1035,28 @@ async function saveNotes(id) {
     body: JSON.stringify({ notes: val }),
   });
   load();
+}
+
+async function submitIssue(featureId, description, taskItemId) {
+  var body = { feature_id: featureId, description: description };
+  if (taskItemId) body.task_item_id = taskItemId;
+  await fetch(API + '/api/issues', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  load();
+  if (currentPanelId) showDetail(currentPanelId);
+}
+
+async function resolveIssue(issueId, featureId) {
+  await fetch(API + '/api/issues/' + issueId, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  load();
+  if (currentPanelId) showDetail(currentPanelId);
 }
 
 function closePanel() {

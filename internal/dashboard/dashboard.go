@@ -123,6 +123,42 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 		writeJSON(w, map[string]string{"ok": "true"})
 	})
 
+	mux.HandleFunc("POST /api/issues", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			FeatureID  string `json:"feature_id"`
+			Description string `json:"description"`
+			TaskItemID *int64 `json:"task_item_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		issue, err := s.AddIssue(body.FeatureID, body.Description, body.TaskItemID)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, issue)
+	})
+
+	mux.HandleFunc("PATCH /api/issues/{id}", func(w http.ResponseWriter, r *http.Request) {
+		idStr := r.PathValue("id")
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid issue id", 400)
+			return
+		}
+		var body struct {
+			CommitHash string `json:"commit_hash"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if err := s.ResolveIssue(id, body.CommitHash); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	})
+
 	mux.HandleFunc("GET /api/sessions", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("unlinked") == "true" {
 			sessions, err := s.GetUnlinkedSessions()
