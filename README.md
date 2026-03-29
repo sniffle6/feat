@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/docket-logo.png" alt="docket logo" width="300">
+  <img src="assets/docket-logo.png" alt="docket logo" width="120">
 </p>
 
 # docket
