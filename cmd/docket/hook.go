@@ -277,5 +277,8 @@ func getCommitFiles(dir, hash string) []string {
 }
 
 func isPlanFile(path string) bool {
+	if !strings.HasSuffix(path, ".md") {
+		return false
+	}
 	return strings.Contains(path, "plans/") || strings.HasSuffix(path, "-plan.md")
 }

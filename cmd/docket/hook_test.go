@@ -525,6 +525,28 @@ func TestPostToolUseAutoImportsPlan(t *testing.T) {
 	}
 }
 
+func TestIsPlanFile(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"docs/superpowers/plans/2026-03-28-feature.md", true},
+		{"plans/my-plan.md", true},
+		{"docs/my-feature-plan.md", true},
+		{"src/plans/config.go", false},        // not .md
+		{"docs/migration-plans/notes.txt", false}, // not .md
+		{"src/handler.go", false},
+		{"README.md", false},
+		{"plans/readme.txt", false}, // not .md
+	}
+	for _, tt := range tests {
+		got := isPlanFile(tt.path)
+		if got != tt.want {
+			t.Errorf("isPlanFile(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
+
 func TestPostToolUseRecordsCommit(t *testing.T) {
 	dir := t.TempDir()
 

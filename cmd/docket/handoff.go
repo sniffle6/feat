@@ -78,6 +78,9 @@ func cleanStaleHandoffs(dir string, activeIDs map[string]bool) {
 		return
 	}
 	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
 		name := strings.TrimSuffix(e.Name(), ".md")
 		if !activeIDs[name] {
 			os.Remove(filepath.Join(handoffDir, e.Name()))
