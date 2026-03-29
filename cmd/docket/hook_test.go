@@ -118,18 +118,103 @@ func TestStopWithCommitsAndFeature(t *testing.T) {
 	var buf bytes.Buffer
 	handleStop(h, &buf)
 
-	var out hookOutput
+	// First stop should block and prompt for rich summary
+	var out stopHookOutput
 	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
 		t.Fatalf("decode output: %v", err)
 	}
-	if !out.Continue {
-		t.Error("expected Continue to be true")
+	if out.Decision != "block" {
+		t.Errorf("expected decision=block, got: %s", out.Decision)
 	}
-	if out.SystemMessage != "" {
-		t.Errorf("expected no systemMessage, got: %s", out.SystemMessage)
+	if !strings.Contains(out.Reason, f.ID) {
+		t.Errorf("expected feature ID in reason, got: %s", out.Reason)
+	}
+	if !strings.Contains(out.Reason, "log_session") {
+		t.Errorf("expected log_session instruction in reason, got: %s", out.Reason)
+	}
+	if !strings.Contains(out.Reason, "abc123") {
+		t.Errorf("expected commit hashes in reason, got: %s", out.Reason)
 	}
 
-	// Verify session was logged directly to the database
+	// Commits.log should NOT be deleted yet (cleaned on re-trigger)
+	if _, err := os.Stat(commitsPath); os.IsNotExist(err) {
+		t.Error("expected commits.log to still exist after first stop")
+	}
+
+	// No session should be logged by the hook (Claude does it via MCP)
+	s2, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+
+	sessions, err := s2.GetSessionsForFeature(f.ID)
+	if err != nil {
+		t.Fatalf("get sessions: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected 0 sessions (Claude logs via MCP), got %d", len(sessions))
+	}
+}
+
+func TestStopRetriggerWritesHandoffAndCleans(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := s.AddFeature("My Feature", "testing re-trigger")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := "in_progress"
+	leftOff := "wrote the parser"
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: &status, LeftOff: &leftOff})
+	s.Close()
+
+	// Write a commits.log (leftover from first stop)
+	commitsPath := filepath.Join(dir, ".docket", "commits.log")
+	os.WriteFile(commitsPath, []byte("abc123|||feat: add something\n"), 0644)
+
+	h := &hookInput{
+		SessionID:      "test-session",
+		CWD:            dir,
+		HookEventName:  "Stop",
+		StopHookActive: true,
+	}
+
+	var buf bytes.Buffer
+	handleStop(h, &buf)
+
+	// Re-trigger should allow stop (no decision)
+	var out stopHookOutput
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if out.Decision != "" {
+		t.Errorf("expected no decision on re-trigger, got: %s", out.Decision)
+	}
+
+	// Commits.log should be cleaned up
+	if _, err := os.Stat(commitsPath); !os.IsNotExist(err) {
+		t.Error("expected commits.log to be deleted on re-trigger")
+	}
+
+	// Handoff file should be written
+	handoffPath := filepath.Join(dir, ".docket", "handoff", f.ID+".md")
+	content, err := os.ReadFile(handoffPath)
+	if err != nil {
+		t.Fatalf("handoff file not created: %v", err)
+	}
+	if !strings.Contains(string(content), "# Handoff: My Feature") {
+		t.Errorf("handoff missing title:\n%s", content)
+	}
+	if !strings.Contains(string(content), "wrote the parser") {
+		t.Errorf("handoff missing left_off:\n%s", content)
+	}
+
+	// Fallback: session should be logged mechanically since Claude didn't call log_session
 	s2, err := store.Open(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -141,19 +226,65 @@ func TestStopWithCommitsAndFeature(t *testing.T) {
 		t.Fatalf("get sessions: %v", err)
 	}
 	if len(sessions) != 1 {
-		t.Fatalf("expected 1 session, got %d", len(sessions))
+		t.Fatalf("expected 1 fallback session, got %d", len(sessions))
 	}
-	sess := sessions[0]
-	if !strings.Contains(sess.Summary, "feat: add something") {
-		t.Errorf("expected commit message in summary, got: %s", sess.Summary)
+	if !strings.Contains(sessions[0].Summary, "feat: add something") {
+		t.Errorf("expected mechanical summary, got: %s", sessions[0].Summary)
 	}
-	if len(sess.Commits) != 2 || sess.Commits[0] != "abc123" {
-		t.Errorf("expected commit hashes [abc123, def456], got: %v", sess.Commits)
+}
+
+func TestStopRetriggerNoDoubleLog(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	// Verify commits.log was deleted
-	if _, err := os.Stat(commitsPath); !os.IsNotExist(err) {
-		t.Error("expected commits.log to be deleted")
+	f, err := s.AddFeature("My Feature", "testing no double log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := "in_progress"
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: &status})
+
+	// Simulate Claude having called log_session with the commit hash
+	s.LogSession(store.SessionInput{
+		FeatureID: f.ID,
+		Summary:   "Rich AI summary of the session",
+		Commits:   []string{"abc123"},
+	})
+	s.Close()
+
+	// Write a commits.log with the same commit
+	commitsPath := filepath.Join(dir, ".docket", "commits.log")
+	os.WriteFile(commitsPath, []byte("abc123|||feat: add something\n"), 0644)
+
+	h := &hookInput{
+		SessionID:      "test-session",
+		CWD:            dir,
+		HookEventName:  "Stop",
+		StopHookActive: true,
+	}
+
+	var buf bytes.Buffer
+	handleStop(h, &buf)
+
+	// Should NOT double-log — Claude already logged the session
+	s2, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+
+	sessions, err := s2.GetSessionsForFeature(f.ID)
+	if err != nil {
+		t.Fatalf("get sessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected exactly 1 session (no double-log), got %d", len(sessions))
+	}
+	if !strings.Contains(sessions[0].Summary, "Rich AI summary") {
+		t.Errorf("expected Claude's rich summary, got: %s", sessions[0].Summary)
 	}
 }
 
@@ -174,15 +305,13 @@ func TestStopNoCommitsNoFeatures(t *testing.T) {
 	var buf bytes.Buffer
 	handleStop(h, &buf)
 
-	var out hookOutput
+	// Should allow stop with no decision
+	var out stopHookOutput
 	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
 		t.Fatalf("decode output: %v", err)
 	}
-	if !out.Continue {
-		t.Error("expected Continue to be true")
-	}
-	if out.SystemMessage != "" {
-		t.Errorf("expected no systemMessage, got: %s", out.SystemMessage)
+	if out.Decision != "" {
+		t.Errorf("expected no decision, got: %s", out.Decision)
 	}
 
 	// Verify no sessions were logged
@@ -243,10 +372,12 @@ func TestStopWritesHandoffFile(t *testing.T) {
 	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: &status, LeftOff: &leftOff})
 	s.Close()
 
+	// Handoff files are written on re-trigger (stop_hook_active=true)
 	h := &hookInput{
-		SessionID:     "test-session",
-		CWD:           dir,
-		HookEventName: "Stop",
+		SessionID:      "test-session",
+		CWD:            dir,
+		HookEventName:  "Stop",
+		StopHookActive: true,
 	}
 
 	var buf bytes.Buffer
@@ -285,10 +416,12 @@ func TestStopCleansStaleHandoffs(t *testing.T) {
 	os.MkdirAll(handoffDir, 0755)
 	os.WriteFile(filepath.Join(handoffDir, "done-feature.md"), []byte("stale"), 0644)
 
+	// Stale handoff cleanup happens on re-trigger
 	h := &hookInput{
-		SessionID:     "test-session",
-		CWD:           dir,
-		HookEventName: "Stop",
+		SessionID:      "test-session",
+		CWD:            dir,
+		HookEventName:  "Stop",
+		StopHookActive: true,
 	}
 
 	var buf bytes.Buffer

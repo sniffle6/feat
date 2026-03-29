@@ -13,11 +13,12 @@ import (
 )
 
 type hookInput struct {
-	SessionID     string    `json:"session_id"`
-	CWD           string    `json:"cwd"`
-	HookEventName string    `json:"hook_event_name"`
-	ToolName      string    `json:"tool_name"`
-	ToolInput     toolInput `json:"tool_input"`
+	SessionID      string    `json:"session_id"`
+	CWD            string    `json:"cwd"`
+	HookEventName  string    `json:"hook_event_name"`
+	ToolName       string    `json:"tool_name"`
+	ToolInput      toolInput `json:"tool_input"`
+	StopHookActive bool      `json:"stop_hook_active"`
 }
 
 type toolInput struct {
@@ -27,6 +28,11 @@ type toolInput struct {
 type hookOutput struct {
 	Continue      bool   `json:"continue"`
 	SystemMessage string `json:"systemMessage,omitempty"`
+}
+
+type stopHookOutput struct {
+	Decision string `json:"decision,omitempty"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 func runHook() {
@@ -40,7 +46,11 @@ func runHook() {
 	docketDir := filepath.Join(h.CWD, ".docket")
 	if _, err := os.Stat(docketDir); os.IsNotExist(err) {
 		// Not a docket project — pass through silently
-		json.NewEncoder(os.Stdout).Encode(hookOutput{Continue: true})
+		if h.HookEventName == "Stop" {
+			json.NewEncoder(os.Stdout).Encode(stopHookOutput{})
+		} else {
+			json.NewEncoder(os.Stdout).Encode(hookOutput{Continue: true})
+		}
 		return
 	}
 
@@ -125,8 +135,6 @@ func handleSessionStart(h *hookInput, w io.Writer) {
 }
 
 func handleStop(h *hookInput, w io.Writer) {
-	out := hookOutput{Continue: true}
-
 	// Read commits.log if it exists
 	commitsPath := filepath.Join(h.CWD, ".docket", "commits.log")
 	var commits []string
@@ -141,59 +149,118 @@ func handleStop(h *hookInput, w io.Writer) {
 	// Find active feature
 	s, err := store.Open(h.CWD)
 	if err != nil {
-		json.NewEncoder(w).Encode(out)
+		json.NewEncoder(w).Encode(stopHookOutput{})
 		return
 	}
 	defer s.Close()
 
 	features, err := s.ListFeatures("in_progress")
 	if err != nil {
-		json.NewEncoder(w).Encode(out)
+		json.NewEncoder(w).Encode(stopHookOutput{})
 		return
 	}
 
-	// Log session directly if there's an active feature
+	// Re-trigger (second stop): write handoff files and allow stop
+	if h.StopHookActive {
+		// Fallback: if Claude didn't call log_session, log a mechanical summary
+		if len(features) > 0 && len(commits) > 0 {
+			f := features[0]
+			sessions, sessErr := s.GetSessionsForFeature(f.ID)
+			hasRecentSession := false
+			if sessErr == nil && len(sessions) > 0 {
+				// Check if a session was logged after the first stop blocked
+				// (i.e., Claude called log_session as prompted)
+				for _, sess := range sessions {
+					for _, c := range sess.Commits {
+						for _, logLine := range commits {
+							parts := strings.SplitN(logLine, "|||", 2)
+							if len(parts) == 2 && parts[0] == c {
+								hasRecentSession = true
+								break
+							}
+						}
+						if hasRecentSession {
+							break
+						}
+					}
+					if hasRecentSession {
+						break
+					}
+				}
+			}
+			if !hasRecentSession {
+				// Claude didn't log a session — fall back to mechanical summary
+				var summaryParts []string
+				var commitHashes []string
+				for _, c := range commits {
+					parts := strings.SplitN(c, "|||", 2)
+					if len(parts) == 2 {
+						commitHashes = append(commitHashes, parts[0])
+						summaryParts = append(summaryParts, parts[1])
+					}
+				}
+				if len(commitHashes) > 0 {
+					summary := fmt.Sprintf("%d commit(s): %s", len(commitHashes), strings.Join(summaryParts, "; "))
+					s.LogSession(store.SessionInput{
+						FeatureID: f.ID,
+						Summary:   summary,
+						Commits:   commitHashes,
+					})
+				}
+			}
+		}
+
+		if len(commits) > 0 {
+			os.Remove(commitsPath)
+		}
+		if len(features) > 0 {
+			activeIDs := make(map[string]bool)
+			for _, f := range features {
+				activeIDs[f.ID] = true
+				data, err := s.GetHandoffData(f.ID)
+				if err == nil {
+					writeHandoffFile(h.CWD, data)
+				}
+			}
+			cleanStaleHandoffs(h.CWD, activeIDs)
+		}
+		json.NewEncoder(w).Encode(stopHookOutput{})
+		return
+	}
+
+	// First stop: if active feature with commits, block and prompt for rich summary
 	if len(features) > 0 && len(commits) > 0 {
 		f := features[0]
 
-		// Build mechanical summary from commits
-		var summaryParts []string
 		var commitHashes []string
 		for _, c := range commits {
 			parts := strings.SplitN(c, "|||", 2)
 			if len(parts) == 2 {
 				commitHashes = append(commitHashes, parts[0])
-				summaryParts = append(summaryParts, parts[1])
 			}
 		}
-		summary := fmt.Sprintf("%d commit(s): %s", len(commits), strings.Join(summaryParts, "; "))
 
-		s.LogSession(store.SessionInput{
-			FeatureID: f.ID,
-			Summary:   summary,
-			Commits:   commitHashes,
+		reason := fmt.Sprintf(
+			`[docket] Before ending, log a session summary for feature "%s" (id: %s).
+
+Call log_session with:
+- feature_id: "%s"
+- summary: Write 3-5 sentences covering: what you worked on, key decisions made, anything you tried that didn't work or gotchas you discovered, and what the next person should know.
+- commits: "%s"
+- files_touched: list the files you modified this session
+
+Then call update_feature to set left_off to a brief note about where things stand.`,
+			f.Title, f.ID, f.ID, strings.Join(commitHashes, ","))
+
+		json.NewEncoder(w).Encode(stopHookOutput{
+			Decision: "block",
+			Reason:   reason,
 		})
+		return
 	}
 
-	// Clean up commits.log
-	if len(commits) > 0 {
-		os.Remove(commitsPath)
-	}
-
-	// Write handoff files for in_progress features, clean stale ones
-	if len(features) > 0 {
-		activeIDs := make(map[string]bool)
-		for _, f := range features {
-			activeIDs[f.ID] = true
-			data, err := s.GetHandoffData(f.ID)
-			if err == nil {
-				writeHandoffFile(h.CWD, data)
-			}
-		}
-		cleanStaleHandoffs(h.CWD, activeIDs)
-	}
-
-	json.NewEncoder(w).Encode(out)
+	// No active feature or no commits — allow stop
+	json.NewEncoder(w).Encode(stopHookOutput{})
 }
 
 func handlePostToolUse(h *hookInput, w io.Writer) {
