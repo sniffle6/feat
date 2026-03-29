@@ -25,24 +25,17 @@ Builds binary to `~/.local/share/docket/docket.exe`, installs plugin to `~/.clau
 ## Key Files
 
 - `cmd/docket/main.go` — entry point (serve, init, version commands)
-- `internal/mcp/server.go` — MCP server setup
-- `internal/mcp/tools.go` — MCP tool registration (18 tools)
-- `internal/mcp/tools_feature.go` — feature CRUD, context, quick track handlers
-- `internal/mcp/tools_session.go` — log session, compact sessions handlers
-- `internal/mcp/tools_subtask.go` — import plan, subtask/task item handlers
-- `internal/mcp/tools_issue.go` — issue and decision handlers
-- `internal/store/store.go` — SQLite data layer, Feature/Session structs
-- `internal/store/migrate.go` — schema migrations
-- `internal/store/decision.go` — decision log operations
-- `internal/store/subtask.go` — subtask/task item operations
-- `internal/store/templates.go` — feature type templates (feature/bugfix/chore/spike)
-- `internal/store/import.go` — plan file parser
-- `internal/dashboard/dashboard.go` — HTTP handler for web UI
-- `dashboard/index.html` — frontend (embedded in binary)
-- `plugin/` — Claude Code plugin (agent, skill, MCP config)
 - `cmd/docket/hook.go` — SessionStart/PostToolUse/Stop hook handlers
 - `cmd/docket/handoff.go` — handoff file renderer and writer
 - `cmd/docket/update.go` — CLAUDE.md snippet sync command
+- `cmd/docket/export.go` — handoff file export for context resets
+- `internal/mcp/tools.go` — tool registration (18 tools), handlers split across tools_*.go
+- `internal/store/store.go` — SQLite data layer, Feature/FeatureUpdate structs, completion gate
+- `internal/store/migrate.go` — schema migrations (v1-v7)
+- `internal/store/templates.go` — feature type templates (feature/bugfix/chore/spike)
+- `internal/store/import.go` — plan file parser (regex-based markdown → subtasks)
+- `dashboard/index.html` — single-file frontend (embedded via Go embed)
+- `plugin/` — Claude Code plugin (agent, skills, hooks, MCP config)
 
 ## Dashboard
 
