@@ -122,6 +122,24 @@ func registerTools(srv *server.MCPServer, s *store.Store) {
 		mcp.WithString("status", mcp.Description("Feature status: done (default), in_progress, planned")),
 	), quickTrackHandler(s))
 
+	srv.AddTool(mcp.NewTool("add_issue",
+		mcp.WithDescription("Log a bug or issue on a feature card. Issues are visible on the dashboard and in get_feature output."),
+		mcp.WithString("feature_id", mcp.Required(), mcp.Description("Feature slug ID")),
+		mcp.WithString("description", mcp.Required(), mcp.Description("What's wrong — describe the bug")),
+		mcp.WithString("task_item_id", mcp.Description("Optional task item ID this issue relates to")),
+	), addIssueHandler(s))
+
+	srv.AddTool(mcp.NewTool("resolve_issue",
+		mcp.WithDescription("Mark an issue as resolved. Optionally attach the commit that fixed it."),
+		mcp.WithString("id", mcp.Required(), mcp.Description("Issue ID")),
+		mcp.WithString("commit_hash", mcp.Description("Commit SHA that fixed the issue")),
+	), resolveIssueHandler(s))
+
+	srv.AddTool(mcp.NewTool("list_issues",
+		mcp.WithDescription("List open issues. Filter by feature or list all open issues across all features."),
+		mcp.WithString("feature_id", mcp.Description("Filter to one feature. Omit for all open issues.")),
+	), listIssuesHandler(s))
+
 	srv.AddTool(mcp.NewTool("add_decision",
 		mcp.WithDescription("Log a decision on a feature. Records what approach was considered, whether it was accepted or rejected, and why. Prevents re-exploring dead ends across sessions."),
 		mcp.WithString("feature_id", mcp.Required(), mcp.Description("Feature slug ID")),
@@ -698,6 +716,84 @@ func quickTrackHandler(s *store.Store) server.ToolHandlerFunc {
 			action = "Created"
 		}
 		return mcp.NewToolResultText(fmt.Sprintf("%s feature %q [%s]", action, result.Feature.ID, result.Feature.Status)), nil
+	}
+}
+
+func addIssueHandler(s *store.Store) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.GetArguments()
+		featureID := args["feature_id"].(string)
+		description := args["description"].(string)
+
+		var taskItemID *int64
+		if v, ok := args["task_item_id"].(string); ok && v != "" {
+			id := parseInt64(v)
+			taskItemID = &id
+		}
+
+		issue, err := s.AddIssue(featureID, description, taskItemID)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		msg := fmt.Sprintf("Issue #%d logged on %s: %s", issue.ID, featureID, description)
+		if taskItemID != nil {
+			msg += fmt.Sprintf(" (linked to task item #%d)", *taskItemID)
+		}
+		return mcp.NewToolResultText(msg), nil
+	}
+}
+
+func resolveIssueHandler(s *store.Store) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.GetArguments()
+		id := parseInt64(args["id"].(string))
+		commitHash, _ := args["commit_hash"].(string)
+
+		if err := s.ResolveIssue(id, commitHash); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		msg := fmt.Sprintf("Issue #%d resolved.", id)
+		if commitHash != "" {
+			msg += fmt.Sprintf(" Fix: %s", commitHash)
+		}
+		return mcp.NewToolResultText(msg), nil
+	}
+}
+
+func listIssuesHandler(s *store.Store) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		featureID, _ := req.GetArguments()["feature_id"].(string)
+
+		var issues []store.Issue
+		var err error
+		if featureID != "" {
+			issues, err = s.GetIssuesForFeature(featureID)
+		} else {
+			issues, err = s.GetAllOpenIssues()
+		}
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		if len(issues) == 0 {
+			return mcp.NewToolResultText("No open issues."), nil
+		}
+
+		var lines []string
+		for _, iss := range issues {
+			line := fmt.Sprintf("- #%d [%s] %s", iss.ID, iss.FeatureID, iss.Description)
+			if iss.Status == "resolved" {
+				line += " (resolved"
+				if iss.ResolvedCommit != "" {
+					line += ": " + iss.ResolvedCommit
+				}
+				line += ")"
+			}
+			lines = append(lines, line)
+		}
+		return mcp.NewToolResultText(strings.Join(lines, "\n")), nil
 	}
 }
 
