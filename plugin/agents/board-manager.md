@@ -20,9 +20,9 @@ You have access to these docket MCP tools (prefixed `mcp__plugin_docket_docket__
 | `add_feature` | Creating a new feature card. Params: `title` (required), `description`, `status` (planned/in_progress/blocked). |
 | `update_feature` | Updating a feature. Params: `id` (required), `status`, `title`, `description`, `left_off`, `worktree_path`, `key_files` (comma-separated). |
 | `import_plan` | Importing a plan file into subtasks/items. Params: `id` (required), `plan_path` (absolute path, required). |
-| `complete_task_item` | Marking a task item done. Params: `id` (task item ID, required), `outcome` (required), `commit_hash`, `key_files`. |
-| `add_subtask` | Creating a phase manually. Params: `feature_id` (required), `title` (required). |
-| `add_task_item` | Adding a task to a subtask. Params: `subtask_id` (required), `title` (required). |
+| `complete_task_item` | Marking task item(s) done. Single: `id` + `outcome` (required), `commit_hash`, `key_files`. Batch: `items` JSON array. |
+| `add_subtask` | Creating phase(s). Params: `feature_id` (required), `title` (required, pipe-separated for batch). |
+| `add_task_item` | Adding task(s) to a subtask. Params: `subtask_id` (required), `title` (required, pipe-separated for batch). |
 | `add_issue` | Logging a bug found during work. Params: `feature_id` (required), `description` (required), `task_item_id` (optional). |
 | `resolve_issue` | Marking a bug as fixed. Params: `id` (required), `commit_hash` (optional). |
 | `list_issues` | Checking open bugs. Params: `feature_id` (optional, omit for all). |

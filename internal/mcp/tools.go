@@ -81,33 +81,25 @@ func registerTools(srv *server.MCPServer, s *store.Store) {
 	), completeTaskItemHandler(s))
 
 	srv.AddTool(mcp.NewTool("add_subtask",
-		mcp.WithDescription("Manually add a subtask (phase) to a feature."),
+		mcp.WithDescription("Add subtask(s) to a feature. Use pipe-separated titles for multiple (e.g., 'Phase 1|Phase 2|Phase 3')."),
 		mcp.WithString("feature_id", mcp.Required(), mcp.Description("Feature slug ID")),
-		mcp.WithString("title", mcp.Required(), mcp.Description("Subtask title")),
+		mcp.WithString("title", mcp.Required(), mcp.Description("Subtask title, or pipe-separated titles for batch")),
 	), addSubtaskHandler(s))
 
 	srv.AddTool(mcp.NewTool("add_task_item",
-		mcp.WithDescription("Manually add a task item to a subtask."),
+		mcp.WithDescription("Add task item(s) to a subtask. Use pipe-separated titles for multiple (e.g., 'Write tests|Implement handler')."),
 		mcp.WithString("subtask_id", mcp.Required(), mcp.Description("Parent subtask ID (number)")),
-		mcp.WithString("title", mcp.Required(), mcp.Description("Task item title")),
+		mcp.WithString("title", mcp.Required(), mcp.Description("Task item title, or pipe-separated titles for batch")),
 	), addTaskItemHandler(s))
 
-	srv.AddTool(mcp.NewTool("add_subtasks",
-		mcp.WithDescription("Batch-add multiple subtasks (phases) to a feature in one call. More token-efficient than calling add_subtask repeatedly."),
-		mcp.WithString("feature_id", mcp.Required(), mcp.Description("Feature slug ID")),
-		mcp.WithString("titles", mcp.Required(), mcp.Description("Pipe-separated subtask titles (e.g., 'Phase 1|Phase 2|Phase 3')")),
-	), addSubtasksHandler(s))
-
-	srv.AddTool(mcp.NewTool("add_task_items",
-		mcp.WithDescription("Batch-add multiple task items to a subtask in one call. More token-efficient than calling add_task_item repeatedly."),
-		mcp.WithString("subtask_id", mcp.Required(), mcp.Description("Parent subtask ID (number)")),
-		mcp.WithString("titles", mcp.Required(), mcp.Description("Pipe-separated task item titles (e.g., 'Write tests|Implement handler|Update docs')")),
-	), addTaskItemsHandler(s))
-
-	srv.AddTool(mcp.NewTool("complete_task_items",
-		mcp.WithDescription("Batch-complete multiple task items in one call. More token-efficient than calling complete_task_item repeatedly. Each entry needs an ID and outcome; commit_hash and key_files are optional."),
-		mcp.WithString("items", mcp.Required(), mcp.Description("JSON array of completions: [{\"id\":\"1\",\"outcome\":\"done\"},{\"id\":\"2\",\"outcome\":\"skipped\",\"commit_hash\":\"abc\",\"key_files\":\"a.go,b.go\"}]")),
-	), completeTaskItemsHandler(s))
+	srv.AddTool(mcp.NewTool("complete_task_item",
+		mcp.WithDescription("Mark task item(s) as done. Pass id+outcome for one, or items JSON array for batch: [{\"id\":\"1\",\"outcome\":\"done\",\"commit_hash\":\"abc\",\"key_files\":\"a.go\"}]"),
+		mcp.WithString("id", mcp.Description("Task item ID (number) — for single completion")),
+		mcp.WithString("outcome", mcp.Description("One-liner of what was accomplished — for single completion")),
+		mcp.WithString("commit_hash", mcp.Description("Git commit SHA")),
+		mcp.WithString("key_files", mcp.Description("Comma-separated file paths modified")),
+		mcp.WithString("items", mcp.Description("JSON array for batch: [{\"id\":\"1\",\"outcome\":\"done\"}]. Overrides id/outcome params.")),
+	), completeTaskItemHandler(s))
 
 	srv.AddTool(mcp.NewTool("get_full_context",
 		mcp.WithDescription("Get everything for a feature: all subtasks (including archived), all task items with outcomes and commits, all sessions. For subagent deep dives."),

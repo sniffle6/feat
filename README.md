@@ -112,12 +112,9 @@ Each feature can have decisions logged against it — what was considered, wheth
 | `log_session` | Record what happened in a session. |
 | `compact_sessions` | Compress old sessions into a summary (keeps last 3). |
 | `import_plan` | Import markdown plan file as subtasks/task items. |
-| `add_subtask` | Create a phase/milestone. |
-| `add_subtasks` | Batch create phases (pipe-separated titles). |
-| `add_task_item` | Add a task to a subtask. |
-| `add_task_items` | Batch add tasks (pipe-separated titles). |
-| `complete_task_item` | Mark a task done with outcome and commit hash. |
-| `complete_task_items` | Batch complete tasks (JSON array). |
+| `add_subtask` | Add phase(s) — pipe-separated titles for batch. |
+| `add_task_item` | Add task(s) to a subtask — pipe-separated titles for batch. |
+| `complete_task_item` | Mark task(s) done — single or `items` JSON array for batch. |
 | `add_decision` | Log an approach decision (accepted/rejected with reason). |
 | `add_issue` | Log a bug/issue against a feature. |
 | `resolve_issue` | Mark an issue as resolved with optional commit hash. |

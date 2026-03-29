@@ -75,7 +75,7 @@ Start of work — dispatch `board-manager` agent (model: sonnet) to create or fi
 
 After a commit — use **direct MCP calls** by default, not agent dispatch:
 - `update_feature` — set left_off, key_files, status on the existing feature
-- `complete_task_item` / `complete_task_items` — check off task items with outcome and commit_hash
+- `complete_task_item` — check off task items with outcome and commit_hash (pass `items` JSON array for batch)
 - `add_decision` — record a notable decision
 
 Only dispatch board-manager after a commit when the update requires judgment:
