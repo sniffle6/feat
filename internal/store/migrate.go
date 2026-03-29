@@ -60,6 +60,17 @@ const schemaV4 = `
 ALTER TABLE features ADD COLUMN notes TEXT NOT NULL DEFAULT '';
 `
 
+const schemaV5 = `
+CREATE TABLE IF NOT EXISTS decisions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	feature_id TEXT NOT NULL REFERENCES features(id),
+	approach TEXT NOT NULL,
+	outcome TEXT NOT NULL CHECK(outcome IN ('accepted', 'rejected')),
+	reason TEXT NOT NULL DEFAULT '',
+	created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+`
+
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec(schemaV1); err != nil {
 		return err
@@ -70,5 +81,7 @@ func migrate(db *sql.DB) error {
 	db.Exec(schemaV3)
 	// v4: add notes column (ignore error if already exists)
 	db.Exec(schemaV4)
+	// v5: add decisions table (ignore error if already exists)
+	db.Exec(schemaV5)
 	return nil
 }
