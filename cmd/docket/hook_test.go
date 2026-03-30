@@ -841,3 +841,94 @@ func TestPreToolUseNoFeatures(t *testing.T) {
 		t.Error("expected agent-nudged sentinel to be created")
 	}
 }
+
+func TestPreToolUseFeatureNoTaskItems(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := s.AddFeature("My Feature", "testing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := "in_progress"
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: &status})
+	s.Close()
+
+	h := &hookInput{
+		SessionID:     "test-session",
+		CWD:           dir,
+		HookEventName: "PreToolUse",
+		ToolName:      "Agent",
+	}
+
+	var buf bytes.Buffer
+	handlePreToolUse(h, &buf)
+
+	var out preToolUseOutput
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if out.HookSpecificOutput == nil || out.HookSpecificOutput.PermissionDecision != "allow" {
+		t.Error("expected permissionDecision=allow")
+	}
+	if !strings.Contains(out.SystemMessage, "no task items") {
+		t.Errorf("expected task items nudge, got: %s", out.SystemMessage)
+	}
+	if !strings.Contains(out.SystemMessage, f.ID) {
+		t.Errorf("expected feature ID in message, got: %s", out.SystemMessage)
+	}
+}
+
+func TestPreToolUseFeatureWithTaskItems(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := s.AddFeature("My Feature", "testing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := "in_progress"
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: &status})
+
+	// Add a subtask with a task item
+	st, err := s.AddSubtask(f.ID, "Task 1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.AddTaskItem(st.ID, "Step 1: do something", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	h := &hookInput{
+		SessionID:     "test-session",
+		CWD:           dir,
+		HookEventName: "PreToolUse",
+		ToolName:      "Agent",
+	}
+
+	var buf bytes.Buffer
+	handlePreToolUse(h, &buf)
+
+	var out preToolUseOutput
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if out.HookSpecificOutput == nil || out.HookSpecificOutput.PermissionDecision != "allow" {
+		t.Error("expected permissionDecision=allow")
+	}
+	if out.SystemMessage != "" {
+		t.Errorf("expected no systemMessage when task items exist, got: %s", out.SystemMessage)
+	}
+
+	// Verify no sentinel written
+	sentinel := filepath.Join(dir, ".docket", "agent-nudged")
+	if _, err := os.Stat(sentinel); !os.IsNotExist(err) {
+		t.Error("sentinel should NOT be written when feature has task items")
+	}
+}
