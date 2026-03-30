@@ -208,9 +208,25 @@
   }
   html.light .issue-badge { background: #FFD0D0; color: #8A2020; }
 
+  .tag-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    border: 1px solid #4ECDC440;
+    color: var(--teal);
+    margin: 2px 2px 2px 0;
+  }
+  html.light .tag-pill { border-color: #1A7A7240; color: #1A7A72; }
+
   /* Done cards dimmed */
   .col-done .card { opacity: 0.65; }
   .col-done .card:hover { opacity: 1; }
+
+  .col-archived .column-header { color: var(--muted); }
+  .col-archived .dot { background: var(--muted); }
+  .col-archived .card { opacity: 0.45; }
+  .col-archived .card:hover { opacity: 0.8; }
 
   /* Empty column hint */
   .empty-hint {
@@ -268,6 +284,8 @@
   .badge-blocked { background: #C73A3A20; color: var(--blocked); }
   .badge-dev_complete, .badge-dev-complete { background: #FFD16620; color: var(--yellow); }
   .badge-done { background: #95E06C20; color: var(--done); }
+  .badge-archived { background: #8A887810; color: var(--muted); }
+  html.light .badge-archived { background: #EAEAEA; color: var(--muted); }
 
   .type-badge {
     padding: 2px 8px;
@@ -515,6 +533,7 @@
 <header>
   <div style="display:flex;align-items:center;gap:10px"><img src="docket-logo.png" alt="docket" height="32" style="width:auto"><h1>docket <span id="projectName" style="color:var(--muted);font-weight:400;font-size:16px;"></span></h1></div>
   <div class="header-right">
+    <button class="theme-toggle" id="archiveToggle" onclick="toggleArchived()" title="Show archived features" style="font-size:13px">&#x1F4E6;</button>
     <span class="unlinked-badge" id="unlinkedBadge" onclick="showUnlinked()">0 unlinked sessions</span>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode"></button>
   </div>
@@ -535,19 +554,31 @@ function toggleTheme() {
   localStorage.setItem('docket-theme', isLight ? 'light' : 'dark');
   document.getElementById('themeToggle').textContent = isLight ? '\u2600' : '\u263E';
 }
+function toggleArchived() {
+  showArchived = !showArchived;
+  document.getElementById('archiveToggle').style.borderColor = showArchived ? 'var(--primary)' : '';
+  load();
+}
 initTheme();
 
 var API = '';
 var STATUSES = ['planned', 'in_progress', 'blocked', 'dev_complete', 'done'];
-var STATUS_LABELS = { planned: 'Planned', in_progress: 'In Progress', blocked: 'Blocked', dev_complete: 'Dev Complete', done: 'Done' };
-var STATUS_CSS = { planned: 'col-planned', in_progress: 'col-in-progress', blocked: 'col-blocked', dev_complete: 'col-dev-complete', done: 'col-done' };
+var ALL_STATUSES = ['planned', 'in_progress', 'blocked', 'dev_complete', 'done', 'archived'];
+var STATUS_LABELS = { planned: 'Planned', in_progress: 'In Progress', blocked: 'Blocked', dev_complete: 'Dev Complete', done: 'Done', archived: 'Archived' };
+var STATUS_CSS = { planned: 'col-planned', in_progress: 'col-in-progress', blocked: 'col-blocked', dev_complete: 'col-dev-complete', done: 'col-done', archived: 'col-archived' };
 var features = [];
 var currentPanelId = null;
+var showArchived = false;
 
 async function load() {
   try {
     var res = await fetch(API + '/api/features');
     features = await res.json();
+    if (showArchived) {
+      var res2 = await fetch(API + '/api/features?status=archived');
+      var archived = await res2.json();
+      features = features.concat(archived);
+    }
   } catch(e) { features = []; }
   render();
   loadUnlinked();
@@ -556,8 +587,10 @@ async function load() {
 function render() {
   var board = document.getElementById('board');
   board.innerHTML = '';
-  for (var si = 0; si < STATUSES.length; si++) {
-    var status = STATUSES[si];
+  var statuses = showArchived ? ALL_STATUSES : STATUSES;
+  board.style.gridTemplateColumns = 'repeat(' + statuses.length + ', 1fr)';
+  for (var si = 0; si < statuses.length; si++) {
+    var status = statuses[si];
     var col = document.createElement('div');
     col.className = 'column ' + STATUS_CSS[status];
     var items = features.filter(function(f) { return f.status === status; });
@@ -643,6 +676,20 @@ function render() {
         card.appendChild(issueBadge);
       }
 
+      // Tag pills
+      var tags = f.tags || [];
+      if (tags.length > 0) {
+        var tagWrap = document.createElement('div');
+        tagWrap.style.marginTop = '6px';
+        for (var ti = 0; ti < tags.length; ti++) {
+          var pill = document.createElement('span');
+          pill.className = 'tag-pill';
+          pill.textContent = tags[ti];
+          tagWrap.appendChild(pill);
+        }
+        card.appendChild(tagWrap);
+      }
+
       col.appendChild(card);
     }
     board.appendChild(col);
@@ -689,6 +736,15 @@ async function showDetail(id) {
     typeBadge.className = 'type-badge';
     typeBadge.textContent = f.type;
     slugDiv.appendChild(typeBadge);
+  }
+  if (f.tags && f.tags.length > 0) {
+    for (var ti = 0; ti < f.tags.length; ti++) {
+      var tagPill = document.createElement('span');
+      tagPill.className = 'tag-pill';
+      tagPill.style.marginLeft = '6px';
+      tagPill.textContent = f.tags[ti];
+      slugDiv.appendChild(tagPill);
+    }
   }
   panel.appendChild(slugDiv);
 
