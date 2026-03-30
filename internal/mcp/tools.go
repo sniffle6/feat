@@ -23,7 +23,7 @@ func registerTools(srv *server.MCPServer, s *store.Store) {
 	srv.AddTool(mcp.NewTool("update_feature",
 		mcp.WithDescription("Update a feature's status, description, left_off note, notes, worktree_path, or key_files."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("Feature slug ID")),
-		mcp.WithString("status", mcp.Description("New status: planned, in_progress, done, blocked, dev_complete")),
+		mcp.WithString("status", mcp.Description("New status: planned, in_progress, done, blocked, dev_complete, archived")),
 		mcp.WithString("title", mcp.Description("New title")),
 		mcp.WithString("description", mcp.Description("New description")),
 		mcp.WithString("left_off", mcp.Description("Where work stopped — free text")),

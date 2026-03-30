@@ -80,8 +80,12 @@ This project uses `docket` for feature tracking. Dashboard: http://localhost:<po
 
 Start of work (after any brainstorming/planning) — call `get_ready` to find existing features, then dispatch `board-manager` agent (model: sonnet) to create or find a card. Use `type` param (feature/bugfix/chore/spike) to auto-generate subtask templates.
 
+Use `tags` param (comma-separated) on `add_feature`/`update_feature` to categorize work. New tags warn about existing tags to prevent typos.
+
+Done features are auto-archived after 7 days. Use `list_features(status="archived")` to see them. `update_feature(status="planned")` to unarchive.
+
 After a commit — use **direct MCP calls**, not agent dispatch:
-- `update_feature` — set left_off, key_files, status. Completion gate blocks `done` with unchecked items — pass `force=true` + `force_reason` to override.
+- `update_feature` — set left_off, key_files, status, tags. Completion gate blocks `done` with unchecked items — pass `force=true` + `force_reason` to override.
 - `complete_task_item` — check off items with outcome and commit_hash (pass `items` JSON array for batch)
 - `add_decision` — record notable decisions (accepted/rejected with reason)
 - `add_issue` / `resolve_issue` — track bugs found during work
