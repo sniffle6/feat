@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const docketSection = `## Feature Tracking (docket)
+const docketSectionHead = `## Feature Tracking (docket)
 
 This project uses ` + "`docket`" + ` for feature tracking. Dashboard: http://localhost:<port> (or run ` + "`/docket`" + `).
 
@@ -19,7 +19,13 @@ Start of work (after any brainstorming/planning) — call ` + "`get_ready`" + ` 
 Use ` + "`tags`" + ` param (comma-separated) on ` + "`add_feature`" + `/` + "`update_feature`" + ` to categorize work. New tags warn about existing tags to prevent typos.
 
 Done features are auto-archived after 7 days. Use ` + "`list_features(status=\"archived\")`" + ` to see them. ` + "`update_feature(status=\"planned\")`" + ` to unarchive.
+`
 
+const docketSectionSuperpowers = `
+**Plan execution (superpowers):** When using executing-plans or subagent-driven-development, set up docket BEFORE dispatching the first task — call ` + "`get_ready`" + `, create/find a feature card, and use ` + "`add_task_item`" + ` for each plan task. A PreToolUse hook will remind you if you forget.
+`
+
+const docketSectionTail = `
 After a commit — use **direct MCP calls**, not agent dispatch:
 - ` + "`update_feature`" + ` — set left_off, key_files, status, tags. Completion gate blocks ` + "`done`" + ` with unchecked items — pass ` + "`force=true`" + ` + ` + "`force_reason`" + ` to override.
 - ` + "`complete_task_item`" + ` — check off items with outcome and commit_hash (pass ` + "`items`" + ` JSON array for batch)
@@ -41,6 +47,25 @@ Carry the feature ID across the session.
 
 const sectionHeading = "## Feature Tracking (docket)"
 
+func buildDocketSection(hasSuperpowers bool) string {
+	if hasSuperpowers {
+		return docketSectionHead + docketSectionSuperpowers + docketSectionTail
+	}
+	return docketSectionHead + docketSectionTail
+}
+
+func detectSuperpowers() bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	data, err := os.ReadFile(home + "/.claude/plugins/installed_plugins.json")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "superpowers")
+}
+
 func runUpdate() {
 	data, err := os.ReadFile("CLAUDE.md")
 	if err != nil {
@@ -49,7 +74,8 @@ func runUpdate() {
 	}
 
 	content := string(data)
-	updated := updateDocketSection(content)
+	section := buildDocketSection(detectSuperpowers())
+	updated := updateDocketSection(content, section)
 
 	if updated == content {
 		fmt.Println("CLAUDE.md docket section is already up to date.")
@@ -63,7 +89,7 @@ func runUpdate() {
 	fmt.Println("Updated CLAUDE.md with latest docket section.")
 }
 
-func updateDocketSection(content string) string {
+func updateDocketSection(content string, section string) string {
 	// If section exists, replace it in place
 	idx := strings.Index(content, sectionHeading)
 	if idx >= 0 {
@@ -72,10 +98,10 @@ func updateDocketSection(content string) string {
 		endIdx := strings.Index(rest, "\n## ")
 		if endIdx >= 0 {
 			// Replace section, keep everything after
-			return content[:idx] + docketSection + "\n" + rest[endIdx+1:]
+			return content[:idx] + section + "\n" + rest[endIdx+1:]
 		}
 		// Section goes to EOF
-		return content[:idx] + docketSection
+		return content[:idx] + section
 	}
 
 	// Not found — insert after the first section
@@ -93,7 +119,7 @@ func updateDocketSection(content string) string {
 			}
 			// This is the second ## heading — insert before it
 			result = append(result, "")
-			result = append(result, strings.Split(strings.TrimRight(docketSection, "\n"), "\n")...)
+			result = append(result, strings.Split(strings.TrimRight(section, "\n"), "\n")...)
 			result = append(result, "")
 			inserted = true
 		}
@@ -104,7 +130,7 @@ func updateDocketSection(content string) string {
 	if !inserted {
 		// No second heading found — append at end
 		result = append(result, "")
-		result = append(result, strings.Split(strings.TrimRight(docketSection, "\n"), "\n")...)
+		result = append(result, strings.Split(strings.TrimRight(section, "\n"), "\n")...)
 		result = append(result, "")
 	}
 

@@ -19,7 +19,7 @@ Old line 2.
 go build
 ` + "```" + `
 `
-	result := updateDocketSection(input)
+	result := updateDocketSection(input, buildDocketSection(false))
 
 	if !strings.Contains(result, "direct MCP calls") {
 		t.Error("expected new snippet content")
@@ -43,7 +43,7 @@ Build instructions here.
 
 Test instructions here.
 `
-	result := updateDocketSection(input)
+	result := updateDocketSection(input, buildDocketSection(false))
 
 	buildIdx := strings.Index(result, "## Build")
 	docketIdx := strings.Index(result, "## Feature Tracking (docket)")
@@ -67,7 +67,7 @@ func TestUpdateDocketSectionAppendsWhenNoSecondHeading(t *testing.T) {
 
 This is the only section.
 `
-	result := updateDocketSection(input)
+	result := updateDocketSection(input, buildDocketSection(false))
 
 	if !strings.Contains(result, "## Feature Tracking (docket)") {
 		t.Error("docket section not inserted")
@@ -81,8 +81,9 @@ This is the only section.
 
 func TestUpdateDocketSectionAlreadyUpToDate(t *testing.T) {
 	// Build content that already has the current snippet
-	input := "# My Project\n\n" + docketSection + "\n## Build\n"
-	result := updateDocketSection(input)
+	section := buildDocketSection(false)
+	input := "# My Project\n\n" + section + "\n## Build\n"
+	result := updateDocketSection(input, section)
 
 	if result != input {
 		t.Error("should not change content that's already up to date")
@@ -100,7 +101,7 @@ Build stuff.
 
 Old content at the end of file.`
 
-	result := updateDocketSection(input)
+	result := updateDocketSection(input, buildDocketSection(false))
 
 	if !strings.Contains(result, "direct MCP calls") {
 		t.Error("expected new snippet content")
@@ -110,5 +111,33 @@ Old content at the end of file.`
 	}
 	if !strings.Contains(result, "## Build") {
 		t.Error("Build section should be preserved")
+	}
+}
+
+func TestBuildDocketSectionWithSuperpowers(t *testing.T) {
+	result := buildDocketSection(true)
+
+	if !strings.Contains(result, "Plan execution (superpowers)") {
+		t.Error("expected superpowers paragraph")
+	}
+	if !strings.Contains(result, "direct MCP calls") {
+		t.Error("expected tail content")
+	}
+	if !strings.Contains(result, "## Feature Tracking (docket)") {
+		t.Error("expected section heading")
+	}
+}
+
+func TestBuildDocketSectionWithoutSuperpowers(t *testing.T) {
+	result := buildDocketSection(false)
+
+	if strings.Contains(result, "Plan execution (superpowers)") {
+		t.Error("should not include superpowers paragraph")
+	}
+	if !strings.Contains(result, "direct MCP calls") {
+		t.Error("expected tail content")
+	}
+	if !strings.Contains(result, "## Feature Tracking (docket)") {
+		t.Error("expected section heading")
 	}
 }
