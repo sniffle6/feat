@@ -43,9 +43,13 @@ func addFeatureHandler(s *store.Store) server.ToolHandlerFunc {
 		}
 		var tagWarning string
 		if tagStr, ok := argString(args, "tags"); ok && tagStr != "" {
-			tags := strings.Split(tagStr, ",")
-			for i := range tags {
-				tags[i] = strings.TrimSpace(tags[i])
+			parts := strings.Split(tagStr, ",")
+			var tags []string
+			for _, t := range parts {
+				t = strings.TrimSpace(t)
+				if t != "" {
+					tags = append(tags, t)
+				}
 			}
 			// Check for new tags BEFORE saving so they're still "unknown"
 			newTags := s.CheckNewTags(tags)
@@ -105,9 +109,13 @@ func updateFeatureHandler(s *store.Store) server.ToolHandlerFunc {
 				empty := []string{}
 				u.Tags = &empty
 			} else {
-				tags := strings.Split(v, ",")
-				for i := range tags {
-					tags[i] = strings.TrimSpace(tags[i])
+				parts := strings.Split(v, ",")
+				var tags []string
+				for _, t := range parts {
+					t = strings.TrimSpace(t)
+					if t != "" {
+						tags = append(tags, t)
+					}
 				}
 				u.Tags = &tags
 			}

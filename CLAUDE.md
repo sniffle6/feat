@@ -84,6 +84,8 @@ Use `tags` param (comma-separated) on `add_feature`/`update_feature` to categori
 
 Done features are auto-archived after 7 days. Use `list_features(status="archived")` to see them. `update_feature(status="planned")` to unarchive.
 
+**Plan execution (superpowers):** When using executing-plans or subagent-driven-development, set up docket BEFORE dispatching the first task — call `get_ready`, create/find a feature card, and use `add_task_item` for each plan task. A PreToolUse hook will remind you if you forget.
+
 After a commit — use **direct MCP calls**, not agent dispatch:
 - `update_feature` — set left_off, key_files, status, tags. Completion gate blocks `done` with unchecked items — pass `force=true` + `force_reason` to override.
 - `complete_task_item` — check off items with outcome and commit_hash (pass `items` JSON array for batch)

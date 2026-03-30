@@ -104,15 +104,22 @@ func (s *Store) AutoArchiveStale() ([]string, error) {
 	var ids []string
 	for rows.Next() {
 		var id string
-		rows.Scan(&id)
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan stale feature id: %w", err)
+		}
 		ids = append(ids, id)
 	}
 
 	archived := "archived"
+	var archivedIDs []string
 	for _, id := range ids {
-		s.UpdateFeature(id, FeatureUpdate{Status: &archived})
+		if err := s.UpdateFeature(id, FeatureUpdate{Status: &archived}); err != nil {
+			fmt.Fprintf(os.Stderr, "docket: auto-archive %q: %v\n", id, err)
+			continue
+		}
+		archivedIDs = append(archivedIDs, id)
 	}
-	return ids, nil
+	return archivedIDs, nil
 }
 
 // MarkSessionLogged writes a sentinel file so the Stop hook knows
@@ -282,8 +289,9 @@ func (s *Store) ListFeatures(status string) ([]Feature, error) {
 }
 
 func (s *Store) ListFeaturesWithTag(status, tag string) ([]Feature, error) {
-	query := `SELECT id, title, description, status, type, left_off, notes, key_files, tags, worktree_path, created_at, updated_at FROM features WHERE tags LIKE ?`
-	args := []any{"%" + `"` + tag + `"` + "%"}
+	query := `SELECT id, title, description, status, type, left_off, notes, key_files, tags, worktree_path, created_at, updated_at FROM features WHERE tags LIKE ? ESCAPE '\'`
+	escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(tag)
+	args := []any{"%" + `"` + escaped + `"` + "%"}
 	if status != "" {
 		query += " AND status = ?"
 		args = append(args, status)
@@ -326,9 +334,13 @@ func (s *Store) GetKnownTags() ([]string, error) {
 	seen := make(map[string]bool)
 	for rows.Next() {
 		var tagsJSON string
-		rows.Scan(&tagsJSON)
+		if err := rows.Scan(&tagsJSON); err != nil {
+			continue
+		}
 		var tags []string
-		json.Unmarshal([]byte(tagsJSON), &tags)
+		if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil {
+			continue
+		}
 		for _, t := range tags {
 			seen[t] = true
 		}
