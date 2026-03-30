@@ -76,8 +76,9 @@ func handleSessionStart(h *hookInput, w io.Writer) {
 	defer s.Close()
 
 	// Auto-archive features done >7 days
+	var archiveMsg string
 	if archived, err := s.AutoArchiveStale(); err == nil && len(archived) > 0 {
-		fmt.Fprintf(os.Stderr, "[docket] Auto-archived %d features: %s\n", len(archived), strings.Join(archived, ", "))
+		archiveMsg = fmt.Sprintf("[docket] Auto-archived %d features done >7 days: %s\n", len(archived), strings.Join(archived, ", "))
 	}
 
 	// Create/clear commits.log
@@ -94,7 +95,7 @@ func handleSessionStart(h *hookInput, w io.Writer) {
 	out := hookOutput{Continue: true}
 
 	if len(features) == 0 {
-		out.SystemMessage = "[docket] No active features. Use docket MCP tools to create one."
+		out.SystemMessage = archiveMsg + "[docket] No active features. Use docket MCP tools to create one."
 		json.NewEncoder(w).Encode(out)
 		return
 	}
@@ -139,7 +140,7 @@ func handleSessionStart(h *hookInput, w io.Writer) {
 		}
 	}
 
-	out.SystemMessage = msg.String()
+	out.SystemMessage = archiveMsg + msg.String()
 	json.NewEncoder(w).Encode(out)
 }
 

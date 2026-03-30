@@ -47,12 +47,13 @@ func addFeatureHandler(s *store.Store) server.ToolHandlerFunc {
 			for i := range tags {
 				tags[i] = strings.TrimSpace(tags[i])
 			}
-			s.UpdateFeature(f.ID, store.FeatureUpdate{Tags: &tags})
+			// Check for new tags BEFORE saving so they're still "unknown"
 			newTags := s.CheckNewTags(tags)
 			if len(newTags) > 0 {
 				known, _ := s.GetKnownTags()
 				tagWarning = fmt.Sprintf("\nNote: new tag(s) %q added. Existing tags: %s", strings.Join(newTags, ", "), strings.Join(known, ", "))
 			}
+			s.UpdateFeature(f.ID, store.FeatureUpdate{Tags: &tags})
 		}
 		f, _ = s.GetFeature(f.ID)
 
@@ -100,11 +101,16 @@ func updateFeatureHandler(s *store.Store) server.ToolHandlerFunc {
 			u.KeyFiles = &files
 		}
 		if v, ok := argString(args, "tags"); ok {
-			tags := strings.Split(v, ",")
-			for i := range tags {
-				tags[i] = strings.TrimSpace(tags[i])
+			if v == "" {
+				empty := []string{}
+				u.Tags = &empty
+			} else {
+				tags := strings.Split(v, ",")
+				for i := range tags {
+					tags[i] = strings.TrimSpace(tags[i])
+				}
+				u.Tags = &tags
 			}
-			u.Tags = &tags
 		}
 		if v, ok := args["force"]; ok {
 			if b, ok := v.(bool); ok && b {
@@ -116,17 +122,23 @@ func updateFeatureHandler(s *store.Store) server.ToolHandlerFunc {
 			u.ForceReason = &v
 		}
 
+		// Check for new tags BEFORE saving so they're still "unknown"
+		var tagWarning string
+		if u.Tags != nil && len(*u.Tags) > 0 {
+			newTags := s.CheckNewTags(*u.Tags)
+			if len(newTags) > 0 {
+				known, _ := s.GetKnownTags()
+				tagWarning = fmt.Sprintf("\nNote: new tag(s) %q added. Existing tags: %s", strings.Join(newTags, ", "), strings.Join(known, ", "))
+			}
+		}
+
 		if err := s.UpdateFeature(id, u); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
 		msg := fmt.Sprintf("Updated feature %q", id)
-		if u.Tags != nil {
-			newTags := s.CheckNewTags(*u.Tags)
-			if len(newTags) > 0 {
-				known, _ := s.GetKnownTags()
-				msg += fmt.Sprintf("\nNote: new tag(s) %q added. Existing tags: %s", strings.Join(newTags, ", "), strings.Join(known, ", "))
-			}
+		if tagWarning != "" {
+			msg += tagWarning
 		}
 		return mcp.NewToolResultText(msg), nil
 	}
