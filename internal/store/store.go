@@ -227,6 +227,8 @@ func (s *Store) ListFeatures(status string) ([]Feature, error) {
 	if status != "" {
 		query += " WHERE status = ?"
 		args = append(args, status)
+	} else {
+		query += " WHERE status != 'archived'"
 	}
 	query += " ORDER BY updated_at DESC"
 	rows, err := s.db.Query(query, args...)
@@ -260,6 +262,8 @@ func (s *Store) ListFeaturesWithTag(status, tag string) ([]Feature, error) {
 	if status != "" {
 		query += " AND status = ?"
 		args = append(args, status)
+	} else {
+		query += " AND status != 'archived'"
 	}
 	query += " ORDER BY updated_at DESC"
 	rows, err := s.db.Query(query, args...)
