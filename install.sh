@@ -2,7 +2,8 @@
 set -e
 
 # docket installer — builds binary, installs Claude Code plugin
-# Usage: bash /path/to/docket/install.sh
+# Usage: bash /path/to/docket/install.sh [--dev]
+#   --dev   Symlink plugin dir instead of copying (for development)
 
 SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_SOURCE="$SOURCE_DIR/plugin"
@@ -10,7 +11,18 @@ PLUGIN_INSTALL="$HOME/.claude/plugins/marketplaces/local/docket"
 SETTINGS_FILE="$HOME/.claude/settings.json"
 PLUGINS_FILE="$HOME/.claude/plugins/installed_plugins.json"
 
-echo "=== docket installer ==="
+DEV_MODE=false
+for arg in "$@"; do
+    case "$arg" in
+        --dev) DEV_MODE=true ;;
+    esac
+done
+
+if [ "$DEV_MODE" = true ]; then
+    echo "=== docket installer (DEV MODE) ==="
+else
+    echo "=== docket installer ==="
+fi
 echo "Source:  $SOURCE_DIR"
 echo "Plugin:  $PLUGIN_INSTALL"
 
@@ -20,32 +32,53 @@ if ! command -v go &> /dev/null; then
     exit 1
 fi
 
-# --- Step 1: Build binary in source dir ---
+# --- Step 1: Build binary ---
 
-echo "Building docket..."
-cd "$SOURCE_DIR"
-go build -ldflags="-s -w" -o docket.exe ./cmd/docket/
-echo "Built: $SOURCE_DIR/docket.exe"
-./docket.exe version
+if [ "$DEV_MODE" = true ]; then
+    echo "Building docket into plugin/docket.exe..."
+    cd "$SOURCE_DIR"
+    go build -ldflags="-s -w" -o plugin/docket.exe ./cmd/docket/
+    echo "Built: $PLUGIN_SOURCE/docket.exe"
+    ./plugin/docket.exe version
+else
+    echo "Building docket..."
+    cd "$SOURCE_DIR"
+    go build -ldflags="-s -w" -o docket.exe ./cmd/docket/
+    echo "Built: $SOURCE_DIR/docket.exe"
+    ./docket.exe version
+fi
 
-# --- Step 2: Install plugin (copy plugin dir + binary) ---
+# --- Step 2: Install plugin ---
 
-echo "Installing plugin to $PLUGIN_INSTALL..."
-rm -rf "$PLUGIN_INSTALL"
-mkdir -p "$PLUGIN_INSTALL"
+if [ "$DEV_MODE" = true ]; then
+    # Symlink: plugin install dir -> source plugin dir
+    # Remove existing (whether it's a dir or symlink)
+    rm -rf "$PLUGIN_INSTALL"
+    # Ensure parent dir exists
+    mkdir -p "$(dirname "$PLUGIN_INSTALL")"
+    # Create symlink
+    ln -sfn "$PLUGIN_SOURCE" "$PLUGIN_INSTALL"
+    echo "Symlinked $PLUGIN_INSTALL -> $PLUGIN_SOURCE"
+    echo "Plugin file edits take effect on /reload-plugins (no rebuild needed)"
+    echo "Go code changes: run 'bash dev-build.sh' then restart session"
+else
+    echo "Installing plugin to $PLUGIN_INSTALL..."
+    rm -rf "$PLUGIN_INSTALL"
+    mkdir -p "$PLUGIN_INSTALL"
 
-# Copy plugin components
-cp -r "$PLUGIN_SOURCE/.claude-plugin" "$PLUGIN_INSTALL/"
-cp -r "$PLUGIN_SOURCE/agents" "$PLUGIN_INSTALL/"
-cp -r "$PLUGIN_SOURCE/skills" "$PLUGIN_INSTALL/"
-cp -r "$PLUGIN_SOURCE/hooks" "$PLUGIN_INSTALL/"
-cp -r "$PLUGIN_SOURCE/scripts" "$PLUGIN_INSTALL/"
-cp "$PLUGIN_SOURCE/.mcp.json" "$PLUGIN_INSTALL/"
-cp "$PLUGIN_SOURCE/README.md" "$PLUGIN_INSTALL/"
+    # Copy plugin components
+    cp -r "$PLUGIN_SOURCE/.claude-plugin" "$PLUGIN_INSTALL/"
+    cp -r "$PLUGIN_SOURCE/agents" "$PLUGIN_INSTALL/"
+    cp -r "$PLUGIN_SOURCE/skills" "$PLUGIN_INSTALL/"
+    cp -r "$PLUGIN_SOURCE/hooks" "$PLUGIN_INSTALL/"
+    cp -r "$PLUGIN_SOURCE/scripts" "$PLUGIN_INSTALL/"
+    cp "$PLUGIN_SOURCE/.mcp.json" "$PLUGIN_INSTALL/"
+    cp "$PLUGIN_SOURCE/README.md" "$PLUGIN_INSTALL/"
 
-# Copy binary into plugin dir (${CLAUDE_PLUGIN_ROOT}/docket.exe)
-cp "$SOURCE_DIR/docket.exe" "$PLUGIN_INSTALL/docket.exe"
-echo "Binary installed to $PLUGIN_INSTALL/docket.exe"
+    # Copy binary into plugin dir (${CLAUDE_PLUGIN_ROOT}/docket.exe)
+    cp "$SOURCE_DIR/docket.exe" "$PLUGIN_INSTALL/docket.exe"
+    echo "Binary installed to $PLUGIN_INSTALL/docket.exe"
+fi
 
 # --- Step 3: Register plugin in settings.json ---
 
@@ -132,7 +165,17 @@ fi
 echo ""
 echo "=== Done ==="
 echo "Plugin:    $PLUGIN_INSTALL"
-echo "Binary:    $PLUGIN_INSTALL/docket.exe"
+if [ "$DEV_MODE" = true ]; then
+    echo "Mode:      SYMLINK (dev)"
+    echo "Binary:    $PLUGIN_SOURCE/docket.exe"
+    echo ""
+    echo "Dev workflow:"
+    echo "  Plugin file changes → /reload-plugins"
+    echo "  Go code changes     → bash dev-build.sh, then restart session"
+else
+    echo "Mode:      COPY (production)"
+    echo "Binary:    $PLUGIN_INSTALL/docket.exe"
+fi
 echo "Dashboard: run /docket in any project"
 echo ""
 echo "Next steps:"
