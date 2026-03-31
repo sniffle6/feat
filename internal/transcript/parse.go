@@ -4,12 +4,24 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/sniffle6/claude-docket/internal/store"
 )
+
+type countingReader struct {
+	r     io.Reader
+	count int64
+}
+
+func (cr *countingReader) Read(p []byte) (int, error) {
+	n, err := cr.r.Read(p)
+	cr.count += int64(n)
+	return n, err
+}
 
 // transcriptRecord represents one line in the JSONL transcript.
 type transcriptRecord struct {
@@ -68,12 +80,12 @@ func Parse(path string, startOffset int64) (*Delta, error) {
 	pendingTools := make(map[string]contentBlock) // tool_use_id -> block
 	fileEditCounts := make(map[string]int)
 
-	scanner := bufio.NewScanner(f)
+	cr := &countingReader{r: f}
+	scanner := bufio.NewScanner(cr)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024) // up to 10MB lines
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		delta.EndOffset += int64(len(line)) + 1 // +1 for newline
 
 		var rec transcriptRecord
 		if err := json.Unmarshal(line, &rec); err != nil {
@@ -122,6 +134,8 @@ func Parse(path string, startOffset int64) (*Delta, error) {
 			}
 		}
 	}
+
+	delta.EndOffset = startOffset + cr.count
 
 	// Convert file edit counts to FileEdit slice
 	for p, count := range fileEditCounts {

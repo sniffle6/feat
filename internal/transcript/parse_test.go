@@ -153,6 +153,32 @@ func TestParseMissingFile(t *testing.T) {
 	}
 }
 
+func writeCRLFFixture(t *testing.T, lines ...string) (string, int64) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transcript.jsonl")
+	var content string
+	for _, line := range lines {
+		content += line + "\r\n"
+	}
+	os.WriteFile(path, []byte(content), 0644)
+	return path, int64(len(content))
+}
+
+func TestParseCRLFEndOffset(t *testing.T) {
+	line1 := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello from CRLF."}]}}`
+	line2 := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Second CRLF line."}]}}`
+	path, fileSize := writeCRLFFixture(t, line1, line2)
+
+	delta, err := Parse(path, 0)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if delta.EndOffset != fileSize {
+		t.Errorf("EndOffset = %d, want %d (file size with CRLF endings)", delta.EndOffset, fileSize)
+	}
+}
+
 func TestParseExtractsCommits(t *testing.T) {
 	path := writeFixture(t,
 		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"git commit -m \"fix auth bug\""}}]}}`,
