@@ -378,10 +378,10 @@ func formatUncheckedTasks(s *store.Store, featureID string) string {
 	}
 
 	var b strings.Builder
-	cap := 10
+	maxItems := 10
 	for i, item := range unchecked {
-		if i >= cap {
-			b.WriteString(fmt.Sprintf("\n  ... and %d more", len(unchecked)-cap))
+		if i >= maxItems {
+			b.WriteString(fmt.Sprintf("\n  ... and %d more", len(unchecked)-maxItems))
 			break
 		}
 		b.WriteString(fmt.Sprintf("\n  #%d: %s", item.ID, item.Title))
