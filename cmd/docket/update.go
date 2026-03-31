@@ -38,7 +38,7 @@ After subagent work — subagent commits bypass hooks. Use direct MCP calls to b
 
 Use ` + "`get_context`" + ` (not ` + "`get_feature`" + `) for routine status checks — it's token-efficient (~15 lines).
 
-Session logging and handoff files are handled automatically by the Stop hook.
+Session context is captured automatically via transcript checkpoints (Stop/PreCompact hooks). Handoff files are written at SessionEnd. Use ` + "`/checkpoint`" + ` to force a manual checkpoint, ` + "`/end-session`" + ` to close the work session without closing Claude.
 
 Carry the feature ID across the session.
 
