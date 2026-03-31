@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -979,5 +980,74 @@ func TestIsDeltaMeaningfulEmpty(t *testing.T) {
 	delta := &transcript.Delta{}
 	if isDeltaMeaningful(dir, delta) {
 		t.Error("empty delta should not be meaningful")
+	}
+}
+
+func TestPostToolUseShowsUncheckedTasks(t *testing.T) {
+	dir := t.TempDir()
+
+	// Init git repo
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+	}
+
+	// Create a file and commit
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0644)
+	addCmd := exec.Command("git", "add", ".")
+	addCmd.Dir = dir
+	addCmd.CombinedOutput()
+	commitCmd := exec.Command("git", "commit", "-m", "feat: add main")
+	commitCmd.Dir = dir
+	if out, err := commitCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v: %s", err, out)
+	}
+
+	// Create feature with subtask + unchecked items
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, _ := s.AddFeature("Auth System", "auth")
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: strPtr("in_progress")})
+	st, _ := s.AddSubtask(f.ID, "Implementation", 0)
+	item1, _ := s.AddTaskItem(st.ID, "Add validation to input handler", 0)
+	item2, _ := s.AddTaskItem(st.ID, "Write unit tests for validator", 1)
+	s.Close()
+
+	h := &hookInput{
+		SessionID:     "test-session",
+		CWD:           dir,
+		HookEventName: "PostToolUse",
+		ToolName:      "Bash",
+		ToolInput:     toolInput{Command: "git commit -m 'feat: add main'"},
+	}
+
+	var buf bytes.Buffer
+	handlePostToolUse(h, &buf)
+
+	var out hookOutput
+	json.Unmarshal(buf.Bytes(), &out)
+
+	// Should list unchecked task items with IDs
+	if !strings.Contains(out.SystemMessage, fmt.Sprintf("#%d", item1.ID)) {
+		t.Errorf("expected item1 ID in message, got: %s", out.SystemMessage)
+	}
+	if !strings.Contains(out.SystemMessage, "Add validation to input handler") {
+		t.Errorf("expected item1 title in message, got: %s", out.SystemMessage)
+	}
+	if !strings.Contains(out.SystemMessage, fmt.Sprintf("#%d", item2.ID)) {
+		t.Errorf("expected item2 ID in message, got: %s", out.SystemMessage)
+	}
+	if !strings.Contains(out.SystemMessage, "complete_task_item") {
+		t.Errorf("expected complete_task_item instruction, got: %s", out.SystemMessage)
 	}
 }

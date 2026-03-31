@@ -356,6 +356,39 @@ func handlePreToolUse(h *hookInput, w io.Writer) {
 	json.NewEncoder(w).Encode(allow)
 }
 
+// formatUncheckedTasks queries unchecked task items for a feature and formats
+// them as lines for the system message. Returns empty string if no unchecked items.
+func formatUncheckedTasks(s *store.Store, featureID string) string {
+	subtasks, err := s.GetSubtasksForFeature(featureID, false)
+	if err != nil {
+		return ""
+	}
+
+	var unchecked []store.TaskItem
+	for _, st := range subtasks {
+		for _, item := range st.Items {
+			if !item.Checked {
+				unchecked = append(unchecked, item)
+			}
+		}
+	}
+
+	if len(unchecked) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	cap := 10
+	for i, item := range unchecked {
+		if i >= cap {
+			b.WriteString(fmt.Sprintf("\n  ... and %d more", len(unchecked)-cap))
+			break
+		}
+		b.WriteString(fmt.Sprintf("\n  #%d: %s", item.ID, item.Title))
+	}
+	return b.String()
+}
+
 func handlePostToolUse(h *hookInput, w io.Writer) {
 	out := hookOutput{Continue: true}
 
@@ -429,8 +462,14 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 			hash, msg, importMsg, features[0].ID, hash)
 	} else {
 		// Normal commit — direct MCP calls only
-		out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s\nUpdate feature %q: update_feature (left_off, key_files) and complete_task_item if applicable.",
-			hash, msg, features[0].ID)
+		taskList := formatUncheckedTasks(s, features[0].ID)
+		if taskList != "" {
+			out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s\nFeature %q — unchecked tasks:%s\nCall complete_task_item for any items this commit completes, then update_feature (left_off, key_files).",
+				hash, msg, features[0].Title, taskList)
+		} else {
+			out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s\nUpdate feature %q: update_feature (left_off, key_files).",
+				hash, msg, features[0].ID)
+		}
 	}
 	json.NewEncoder(w).Encode(out)
 }
