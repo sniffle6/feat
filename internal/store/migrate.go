@@ -92,6 +92,46 @@ const schemaV8 = `
 ALTER TABLE features ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
 `
 
+const schemaV9 = `
+CREATE TABLE IF NOT EXISTS work_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    feature_id TEXT NOT NULL REFERENCES features(id),
+    claude_session_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'closed')),
+    started_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    ended_at DATETIME,
+    handoff_stale INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS checkpoint_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_session_id INTEGER NOT NULL REFERENCES work_sessions(id),
+    feature_id TEXT NOT NULL,
+    reason TEXT NOT NULL CHECK(reason IN ('stop', 'precompact', 'manual_checkpoint', 'manual_end_session')),
+    trigger_type TEXT NOT NULL DEFAULT '',
+    transcript_start_offset INTEGER NOT NULL DEFAULT 0,
+    transcript_end_offset INTEGER NOT NULL DEFAULT 0,
+    semantic_text TEXT NOT NULL DEFAULT '',
+    mechanical_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued', 'running', 'done', 'failed', 'skipped')),
+    error TEXT NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    started_at DATETIME,
+    finished_at DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS checkpoint_observations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    checkpoint_job_id INTEGER NOT NULL REFERENCES checkpoint_jobs(id),
+    work_session_id INTEGER NOT NULL REFERENCES work_sessions(id),
+    feature_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('summary', 'blocker', 'decision_candidate', 'dead_end', 'next_step', 'gotcha')),
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    summary_text TEXT NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+`
+
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec(schemaV1); err != nil {
 		return err
@@ -110,5 +150,7 @@ func migrate(db *sql.DB) error {
 	db.Exec(schemaV7)
 	// v8: add tags column to features (ignore error if already exists)
 	db.Exec(schemaV8)
+	// v9: add work_sessions, checkpoint_jobs, checkpoint_observations tables
+	db.Exec(schemaV9)
 	return nil
 }
