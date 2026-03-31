@@ -1151,3 +1151,70 @@ func TestFormatUncheckedTasksCapsAtTen(t *testing.T) {
 		t.Errorf("item 15 should be truncated, got: %s", result)
 	}
 }
+
+func TestPostToolUsePlanImportShowsUncheckedTasks(t *testing.T) {
+	dir := t.TempDir()
+
+	// Init git repo
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+	}
+
+	// Create a plan file and commit
+	planDir := filepath.Join(dir, "docs", "superpowers", "plans")
+	os.MkdirAll(planDir, 0755)
+	planContent := "# Plan\n\n### Task 1: Do stuff\n\n- [ ] **Step 1: Write code**\n"
+	os.WriteFile(filepath.Join(planDir, "2026-03-31-test-plan.md"), []byte(planContent), 0644)
+
+	addCmd := exec.Command("git", "add", ".")
+	addCmd.Dir = dir
+	addCmd.CombinedOutput()
+	commitCmd := exec.Command("git", "commit", "-m", "docs: add plan")
+	commitCmd.Dir = dir
+	if out, err := commitCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v: %s", err, out)
+	}
+
+	// Create feature with existing unchecked items
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, _ := s.AddFeature("Plan Feature", "plan test")
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: strPtr("in_progress")})
+	st, _ := s.AddSubtask(f.ID, "Pre-existing", 0)
+	s.AddTaskItem(st.ID, "Existing unchecked task", 0)
+	s.Close()
+
+	h := &hookInput{
+		SessionID:     "test-session",
+		CWD:           dir,
+		HookEventName: "PostToolUse",
+		ToolName:      "Bash",
+		ToolInput:     toolInput{Command: "git commit -m 'docs: add plan'"},
+	}
+
+	var buf bytes.Buffer
+	handlePostToolUse(h, &buf)
+
+	var out hookOutput
+	json.Unmarshal(buf.Bytes(), &out)
+
+	// Should mention the import
+	if !strings.Contains(out.SystemMessage, "imported") {
+		t.Errorf("expected import message, got: %s", out.SystemMessage)
+	}
+	// Should also list unchecked tasks (includes both pre-existing and newly imported)
+	if !strings.Contains(out.SystemMessage, "unchecked tasks") {
+		t.Errorf("expected unchecked task list after plan import, got: %s", out.SystemMessage)
+	}
+}

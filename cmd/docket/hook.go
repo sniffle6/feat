@@ -457,9 +457,15 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 	}
 
 	if importMsg != "" {
-		// Plan file imported — needs agent for structuring
-		out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s%s\nDispatch board-manager agent (model: sonnet) to structure imported plan: feature_id=\"%s\", commit %s.",
-			hash, msg, importMsg, features[0].ID, hash)
+		// Plan file imported — show unchecked tasks (includes newly imported ones)
+		taskList := formatUncheckedTasks(s, features[0].ID)
+		if taskList != "" {
+			out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s%s\nFeature %q — unchecked tasks:%s\nDispatch board-manager agent (model: sonnet) to structure imported plan: feature_id=\"%s\", commit %s.",
+				hash, msg, importMsg, features[0].Title, taskList, features[0].ID, hash)
+		} else {
+			out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s%s\nDispatch board-manager agent (model: sonnet) to structure imported plan: feature_id=\"%s\", commit %s.",
+				hash, msg, importMsg, features[0].ID, hash)
+		}
 	} else {
 		// Normal commit — direct MCP calls only
 		taskList := formatUncheckedTasks(s, features[0].ID)
