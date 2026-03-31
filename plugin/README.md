@@ -15,7 +15,16 @@ Claude Code plugin for the docket feature tracker.
 
 ## Setup
 
-Run `install.sh` from the docket repo root. It builds the binary and installs this plugin.
+**Marketplace install** (recommended):
+```
+/plugin marketplace add sniffle6/claude-docket
+/plugin install docket@claude-docket
+```
+The binary downloads automatically on first session start.
+
+**Source install**: Run `install.sh` from the docket repo root. Requires Go 1.21+.
+
+All paths (hooks, MCP server, skills) use `${CLAUDE_PLUGIN_ROOT}` — no hardcoded paths. The binary lives at `${CLAUDE_PLUGIN_ROOT}/docket.exe`.
 
 ## Per-project setup
 

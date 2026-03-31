@@ -15,11 +15,10 @@ Open the docket feature-tracking dashboard in the default browser.
    ```
    If the file doesn't exist, fall back to port `7890`.
 
-2. **Open the dashboard** using the discovered port:
-   ```bash
-   start http://localhost:<port>
-   ```
-   This uses the Windows `start` command. On Linux, use `xdg-open` instead.
+2. **Open the dashboard** using the discovered port. Detect the platform and use the appropriate command:
+   - **Windows**: `start http://localhost:<port>`
+   - **macOS**: `open http://localhost:<port>`
+   - **Linux**: `xdg-open http://localhost:<port>`
 
 3. **Confirm** to the user that the dashboard is opening, and mention the URL.
 

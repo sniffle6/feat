@@ -20,7 +20,7 @@ Initialize docket in the current project. Creates the database directory and add
 
 4. **Run the update command** to insert the docket section into CLAUDE.md:
    ```bash
-   ~/.local/share/docket/docket.exe update
+   ${CLAUDE_PLUGIN_ROOT}/docket.exe update
    ```
    This inserts the latest snippet after the first heading in CLAUDE.md.
 

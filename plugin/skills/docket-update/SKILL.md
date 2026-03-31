@@ -11,7 +11,7 @@ Update the Feature Tracking (docket) section in the current project's CLAUDE.md 
 
 1. **Run the update command:**
    ```bash
-   ~/.local/share/docket/docket.exe update
+   ${CLAUDE_PLUGIN_ROOT}/docket.exe update
    ```
 
 2. **Report the result** to the user. The command will either:

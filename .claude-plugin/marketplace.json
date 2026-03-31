@@ -1,0 +1,13 @@
+{
+  "name": "claude-docket",
+  "owner": {
+    "name": "sniffle6"
+  },
+  "plugins": [
+    {
+      "name": "docket",
+      "source": "./plugin",
+      "description": "Local feature tracker for Claude Code sessions. MCP server + SQLite + web dashboard."
+    }
+  ]
+}

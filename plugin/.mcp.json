@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "docket": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/docket.exe",
+      "args": ["serve"],
+      "type": "stdio"
+    }
+  }
+}

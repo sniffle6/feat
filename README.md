@@ -17,13 +17,20 @@ Claude Code sessions are stateless. When a session ends, the next one starts fre
 - **Generating handoff files** so fresh sessions cold-start with full context
 - **Auto-tracking commits** via hooks — no manual bookkeeping
 
-## Prerequisites
-
-- [Go 1.21+](https://go.dev/dl/)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-- Python 3 (used by the install script for JSON manipulation)
-
 ## Install
+
+### From marketplace (recommended)
+
+```
+/plugin marketplace add sniffle6/claude-docket
+/plugin install docket@claude-docket
+```
+
+The binary downloads automatically on first session start. No build tools needed.
+
+### From source
+
+Requires [Go 1.21+](https://go.dev/dl/).
 
 ```bash
 git clone https://github.com/sniffle6/claude-docket.git
@@ -31,7 +38,7 @@ cd claude-docket
 bash install.sh
 ```
 
-This builds the binary to `~/.local/share/docket/docket.exe` and installs the Claude Code plugin to `~/.claude/plugins/marketplaces/local/docket/`.
+This builds the binary and copies it with the plugin files to `~/.claude/plugins/marketplaces/local/docket/`. All paths resolve via `${CLAUDE_PLUGIN_ROOT}` at runtime.
 
 See [INSTALL.md](INSTALL.md) for full details, updating, and troubleshooting.
 

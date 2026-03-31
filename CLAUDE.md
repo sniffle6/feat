@@ -44,7 +44,8 @@ Builds binary to `~/.local/share/docket/docket.exe`, installs plugin to `~/.clau
 - `internal/checkpoint/config.go` — checkpoint config from env vars
 - `internal/handoff/render.go` — shared handoff rendering (used by hooks and MCP tools)
 - `dashboard/index.html` — single-file frontend (embedded via Go embed)
-- `plugin/` — Claude Code plugin (agent, skills, hooks, MCP config)
+- `plugin/` — Claude Code plugin (agent, skills, hooks, MCP config, binary at install time)
+- `plugin/.mcp.json` — MCP server config using `${CLAUDE_PLUGIN_ROOT}/docket.exe`
 
 ## Dashboard
 
