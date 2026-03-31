@@ -1051,3 +1051,67 @@ func TestPostToolUseShowsUncheckedTasks(t *testing.T) {
 		t.Errorf("expected complete_task_item instruction, got: %s", out.SystemMessage)
 	}
 }
+
+func TestPostToolUseOmitsCheckedTasks(t *testing.T) {
+	dir := t.TempDir()
+
+	// Init git repo
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+	}
+
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0644)
+	addCmd := exec.Command("git", "add", ".")
+	addCmd.Dir = dir
+	addCmd.CombinedOutput()
+	commitCmd := exec.Command("git", "commit", "-m", "feat: done")
+	commitCmd.Dir = dir
+	commitCmd.CombinedOutput()
+
+	// Create feature — all tasks checked
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, _ := s.AddFeature("Done Feature", "done")
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: strPtr("in_progress")})
+	st, _ := s.AddSubtask(f.ID, "Implementation", 0)
+	item, _ := s.AddTaskItem(st.ID, "Already done task", 0)
+	s.CompleteTaskItem(item.ID, store.TaskItemCompletion{Outcome: "done"})
+	s.Close()
+
+	h := &hookInput{
+		SessionID:     "test-session",
+		CWD:           dir,
+		HookEventName: "PostToolUse",
+		ToolName:      "Bash",
+		ToolInput:     toolInput{Command: "git commit -m 'feat: done'"},
+	}
+
+	var buf bytes.Buffer
+	handlePostToolUse(h, &buf)
+
+	var out hookOutput
+	json.Unmarshal(buf.Bytes(), &out)
+
+	// Should NOT contain task list — all checked
+	if strings.Contains(out.SystemMessage, "unchecked tasks") {
+		t.Errorf("expected no task list when all checked, got: %s", out.SystemMessage)
+	}
+	if strings.Contains(out.SystemMessage, "Already done task") {
+		t.Errorf("checked task should not appear in message, got: %s", out.SystemMessage)
+	}
+	// Should still prompt for update_feature
+	if !strings.Contains(out.SystemMessage, "update_feature") {
+		t.Errorf("expected update_feature prompt, got: %s", out.SystemMessage)
+	}
+}
