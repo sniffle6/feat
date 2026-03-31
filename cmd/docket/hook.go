@@ -19,9 +19,8 @@ type hookInput struct {
 	CWD            string    `json:"cwd"`
 	HookEventName  string    `json:"hook_event_name"`
 	ToolName       string    `json:"tool_name"`
-	ToolInput      toolInput `json:"tool_input"`
-	StopHookActive bool      `json:"stop_hook_active"`
-	Trigger        string    `json:"trigger"`
+	ToolInput toolInput `json:"tool_input"`
+	Trigger   string    `json:"trigger"`
 }
 
 type toolInput struct {
