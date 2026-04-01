@@ -193,7 +193,7 @@ func migrate(db *sql.DB) error {
 	db.Exec(schemaV11)
 	// v12: add session_state column to work_sessions
 	db.Exec(schemaV12)
-	// v13: add last_heartbeat column, add 'stale' to session_state CHECK constraint
+	// v13: add last_heartbeat column to work_sessions
 	db.Exec(schemaV13)
 	return nil
 }
