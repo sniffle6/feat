@@ -159,6 +159,10 @@ const schemaV11 = `
 ALTER TABLE checkpoint_jobs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;
 `
 
+const schemaV12 = `
+ALTER TABLE work_sessions ADD COLUMN session_state TEXT NOT NULL DEFAULT 'idle';
+`
+
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec(schemaV1); err != nil {
 		return err
@@ -183,5 +187,7 @@ func migrate(db *sql.DB) error {
 	db.Exec(schemaV10)
 	// v11: add retry_count column to checkpoint_jobs
 	db.Exec(schemaV11)
+	// v12: add session_state column to work_sessions
+	db.Exec(schemaV12)
 	return nil
 }
