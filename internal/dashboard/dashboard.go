@@ -5,8 +5,10 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/sniffle6/claude-docket/internal/store"
 )
@@ -203,6 +205,77 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 			return
 		}
 		writeJSON(w, map[string]string{"ok": "true"})
+	})
+
+	mux.HandleFunc("POST /api/launch/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+
+		// Check for active session — prevent duplicate launches
+		states, _ := s.GetActiveSessionStates()
+		if state, ok := states[id]; ok && state == "working" {
+			http.Error(w, "session already active for this feature", 409)
+			return
+		}
+
+		// Get launch data
+		data, err := s.GetLaunchData(id)
+		if err != nil {
+			http.Error(w, err.Error(), 404)
+			return
+		}
+
+		projDir := devDir
+		if projDir == "" {
+			projDir, _ = os.Getwd()
+		}
+
+		// Read launch command template
+		launchCmd := GetLaunchCmd(projDir)
+		if launchCmd == "" {
+			http.Error(w, "no launch command configured — set DOCKET_LAUNCH_CMD env var or create .docket/launch.toml", 400)
+			return
+		}
+
+		// Check for existing handoff file, use it as base if available
+		var promptContent string
+		handoffPath := filepath.Join(projDir, ".docket", "handoff", id+".md")
+		if existing, err := os.ReadFile(handoffPath); err == nil {
+			// Append unchecked tasks and open issues not already in the handoff
+			promptContent = string(existing)
+			extra := renderLaunchExtras(data)
+			if extra != "" {
+				promptContent = strings.TrimRight(promptContent, "\n") + "\n\n" + extra
+			}
+		} else {
+			promptContent = RenderLaunchPrompt(data)
+		}
+
+		// Write launch prompt file
+		launchDir := filepath.Join(projDir, ".docket", "launch")
+		os.MkdirAll(launchDir, 0755)
+		promptPath := filepath.Join(launchDir, id+".md")
+		if err := os.WriteFile(promptPath, []byte(promptContent), 0644); err != nil {
+			http.Error(w, "failed to write launch prompt: "+err.Error(), 500)
+			return
+		}
+
+		// Substitute and execute
+		cmdStr := SubstituteLaunchCmd(launchCmd, promptPath, data.Feature.Title, id, projDir)
+		cmd := exec.Command("bash", "-c", cmdStr)
+		cmd.Dir = projDir
+		if err := cmd.Start(); err != nil {
+			http.Error(w, "failed to launch: "+err.Error(), 500)
+			return
+		}
+
+		// Don't wait for the process — it's a terminal
+		go cmd.Wait()
+
+		writeJSON(w, map[string]any{
+			"ok":          true,
+			"feature_id":  id,
+			"prompt_file": promptPath,
+		})
 	})
 
 	mux.HandleFunc("GET /api/project", func(w http.ResponseWriter, r *http.Request) {
