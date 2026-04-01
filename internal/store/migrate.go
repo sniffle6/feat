@@ -164,21 +164,7 @@ ALTER TABLE work_sessions ADD COLUMN session_state TEXT NOT NULL DEFAULT 'idle';
 `
 
 const schemaV13 = `
-CREATE TABLE IF NOT EXISTS work_sessions_new (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    feature_id TEXT NOT NULL REFERENCES features(id),
-    claude_session_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'closed')),
-    session_state TEXT NOT NULL DEFAULT 'idle' CHECK(session_state IN ('idle', 'working', 'needs_attention', 'stale')),
-    started_at DATETIME NOT NULL DEFAULT (datetime('now')),
-    ended_at DATETIME,
-    handoff_stale INTEGER NOT NULL DEFAULT 0,
-    last_heartbeat DATETIME
-);
-
-INSERT OR IGNORE INTO work_sessions_new SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, NULL FROM work_sessions;
-DROP TABLE IF EXISTS work_sessions;
-ALTER TABLE work_sessions_new RENAME TO work_sessions;
+ALTER TABLE work_sessions ADD COLUMN last_heartbeat DATETIME;
 `
 
 func migrate(db *sql.DB) error {

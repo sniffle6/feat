@@ -1440,3 +1440,55 @@ func TestExtractEventHint(t *testing.T) {
 		})
 	}
 }
+
+func TestStopHookTouchesHeartbeat(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := store.Open(dir)
+	f, _ := s.AddFeature("Heartbeat Feature", "testing")
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: strPtr("in_progress")})
+	ws, _ := s.OpenWorkSession(f.ID, "sess-1")
+	s.SetSessionState(ws.ID, "working")
+	s.Close()
+
+	h := &hookInput{
+		SessionID:     "sess-1",
+		CWD:           dir,
+		HookEventName: "Stop",
+	}
+
+	var buf bytes.Buffer
+	handleStop(h, &buf)
+
+	s2, _ := store.Open(dir)
+	defer s2.Close()
+	ws2, _ := s2.GetWorkSession(ws.ID)
+	if ws2.LastHeartbeat == nil {
+		t.Error("expected LastHeartbeat to be set after Stop hook")
+	}
+}
+
+func TestPreCompactHookTouchesHeartbeat(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := store.Open(dir)
+	f, _ := s.AddFeature("Compact Feature", "testing")
+	s.UpdateFeature(f.ID, store.FeatureUpdate{Status: strPtr("in_progress")})
+	ws, _ := s.OpenWorkSession(f.ID, "sess-1")
+	s.SetSessionState(ws.ID, "working")
+	s.Close()
+
+	h := &hookInput{
+		SessionID:     "sess-1",
+		CWD:           dir,
+		HookEventName: "PreCompact",
+	}
+
+	var buf bytes.Buffer
+	handlePreCompact(h, &buf)
+
+	s2, _ := store.Open(dir)
+	defer s2.Close()
+	ws2, _ := s2.GetWorkSession(ws.ID)
+	if ws2.LastHeartbeat == nil {
+		t.Error("expected LastHeartbeat to be set after PreCompact hook")
+	}
+}

@@ -247,6 +247,7 @@ func handleStop(h *hookInput, w io.Writer) {
 	}
 
 	s.SetSessionState(ws.ID, "needs_attention")
+	s.TouchHeartbeat(ws.ID)
 
 	// Write sentinel so PostToolUse can skip SQLite open in the common case
 	sentinelPath := filepath.Join(h.CWD, ".docket", "needs-attention")
@@ -286,6 +287,8 @@ func handlePreCompact(h *hookInput, w io.Writer) {
 		json.NewEncoder(w).Encode(hookOutput{Continue: true})
 		return
 	}
+
+	s.TouchHeartbeat(ws.ID)
 
 	delta := parseTranscriptDelta(h)
 	startOffset := getTranscriptOffset(h.CWD)
@@ -468,6 +471,7 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 		if s, err := store.Open(h.CWD); err == nil {
 			if ws, wsErr := s.GetActiveWorkSession(); wsErr == nil {
 				s.SetSessionState(ws.ID, "working")
+				s.TouchHeartbeat(ws.ID)
 			}
 			s.Close()
 		}
@@ -512,6 +516,10 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 	if err != nil || len(features) == 0 {
 		json.NewEncoder(w).Encode(out)
 		return
+	}
+
+	if ws, wsErr := s.GetActiveWorkSession(); wsErr == nil {
+		s.TouchHeartbeat(ws.ID)
 	}
 
 	parts := strings.SplitN(line, "|||", 2)
