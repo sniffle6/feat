@@ -208,6 +208,65 @@
   }
   html.light .issue-badge { background: #FFD0D0; color: #8A2020; }
 
+  /* Session status */
+  .session-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    margin-left: auto;
+  }
+  .status-working {
+    color: var(--done);
+  }
+  .status-working .pulse {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--done);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .status-attention {
+    color: var(--yellow);
+    font-weight: 600;
+  }
+  .status-attention .pulse {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--yellow);
+    animation: pulse 1s ease-in-out infinite;
+  }
+  .launch-btn {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    width: 24px; height: 24px; border-radius: 4px; cursor: pointer;
+    font-size: 12px; display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  .launch-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .launch-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .launch-btn:disabled:hover { border-color: var(--border); color: var(--muted); }
+  .toast {
+    position: fixed; bottom: 20px; right: 20px;
+    background: var(--elevated); color: var(--text); border: 1px solid var(--border);
+    padding: 10px 16px; border-radius: 6px; font-size: 13px;
+    opacity: 0; transition: opacity 0.3s;
+    z-index: 1000;
+  }
+  .toast.visible { opacity: 1; }
+
+  .card-header-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .card-header-row .card-title {
+    flex: 1;
+    margin-bottom: 0;
+  }
+
   .tag-pill {
     display: inline-block;
     padding: 1px 8px;
@@ -538,6 +597,7 @@
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode"></button>
   </div>
 </header>
+<div id="toast" class="toast"></div>
 <div class="board" id="board"></div>
 <div class="panel-overlay" id="panelOverlay" onclick="if(event.target===this)closePanel()">
   <div class="panel" id="panel"></div>
@@ -584,6 +644,36 @@ async function load() {
   loadUnlinked();
 }
 
+function showToast(msg) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('visible');
+  setTimeout(function() { el.classList.remove('visible'); }, 3000);
+}
+
+async function launchSession(featureId, e) {
+  e.stopPropagation();
+  try {
+    var res = await fetch(API + '/api/launch/' + featureId, { method: 'POST' });
+    if (res.status === 400) {
+      showToast('Setup needed: configure DOCKET_LAUNCH_CMD');
+      return;
+    }
+    if (res.status === 409) {
+      showToast('Session already active');
+      return;
+    }
+    if (!res.ok) {
+      var text = await res.text();
+      showToast('Launch failed: ' + text);
+      return;
+    }
+    showToast('Session launched');
+  } catch (err) {
+    showToast('Launch error: ' + err.message);
+  }
+}
+
 function render() {
   var board = document.getElementById('board');
   board.innerHTML = '';
@@ -618,10 +708,40 @@ function render() {
         card.onkeydown = function(e) { if (e.key === 'Enter') showDetail(fid); };
       })(f.id);
 
+      var headerRow = document.createElement('div');
+      headerRow.className = 'card-header-row';
+
       var titleDiv = document.createElement('div');
       titleDiv.className = 'card-title';
       titleDiv.textContent = f.title;
-      card.appendChild(titleDiv);
+      headerRow.appendChild(titleDiv);
+
+      // Session status indicator
+      var state = f.session_state || 'idle';
+      if (state === 'working') {
+        var statusSpan = document.createElement('span');
+        statusSpan.className = 'session-status status-working';
+        statusSpan.innerHTML = '<span class="pulse"></span> Working';
+        headerRow.appendChild(statusSpan);
+      } else if (state === 'needs_attention') {
+        var statusSpan = document.createElement('span');
+        statusSpan.className = 'session-status status-attention';
+        statusSpan.innerHTML = '<span class="pulse"></span> Waiting';
+        headerRow.appendChild(statusSpan);
+      }
+
+      // Launch button
+      var launchBtn = document.createElement('button');
+      launchBtn.className = 'launch-btn';
+      launchBtn.innerHTML = '&#9654;'; // ▶
+      launchBtn.title = state === 'working' ? 'Session active' : 'Launch Claude session';
+      if (state === 'working') launchBtn.disabled = true;
+      (function(fid) {
+        launchBtn.onclick = function(e) { launchSession(fid, e); };
+      })(f.id);
+      headerRow.appendChild(launchBtn);
+
+      card.appendChild(headerRow);
 
       var idDiv = document.createElement('div');
       idDiv.className = 'card-id';
