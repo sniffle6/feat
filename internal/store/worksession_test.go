@@ -82,3 +82,85 @@ func TestMarkHandoffStale(t *testing.T) {
 		t.Error("expected HandoffStale to be true")
 	}
 }
+
+func TestSetSessionState(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Auth System", "token auth")
+	ws, _ := s.OpenWorkSession("auth-system", "session-123")
+
+	if err := s.SetSessionState(ws.ID, "working"); err != nil {
+		t.Fatalf("SetSessionState(working): %v", err)
+	}
+	ws2, _ := s.GetWorkSession(ws.ID)
+	if ws2.SessionState != "working" {
+		t.Errorf("SessionState = %q, want %q", ws2.SessionState, "working")
+	}
+
+	if err := s.SetSessionState(ws.ID, "needs_attention"); err != nil {
+		t.Fatalf("SetSessionState(needs_attention): %v", err)
+	}
+	ws3, _ := s.GetWorkSession(ws.ID)
+	if ws3.SessionState != "needs_attention" {
+		t.Errorf("SessionState = %q, want %q", ws3.SessionState, "needs_attention")
+	}
+}
+
+func TestSetSessionState_ClosedSession(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Auth System", "token auth")
+	ws, _ := s.OpenWorkSession("auth-system", "session-123")
+	s.CloseWorkSession(ws.ID)
+
+	err := s.SetSessionState(ws.ID, "working")
+	if err == nil {
+		t.Fatal("expected error setting state on closed session")
+	}
+}
+
+func TestGetActiveSessionStates(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+	s.AddFeature("Feature B", "")
+	s.AddFeature("Feature C", "")
+
+	// A: working session
+	wsA, _ := s.OpenWorkSession("feature-a", "session-1")
+	s.SetSessionState(wsA.ID, "working")
+
+	// B: needs_attention session
+	// Opening B closes A (one active session at a time), so we get B only
+	wsB, _ := s.OpenWorkSession("feature-b", "session-2")
+	s.SetSessionState(wsB.ID, "needs_attention")
+
+	// C: no session at all
+
+	states, err := s.GetActiveSessionStates()
+	if err != nil {
+		t.Fatalf("GetActiveSessionStates: %v", err)
+	}
+
+	// B should be present (it's the latest open session with non-idle state)
+	if states["feature-b"] != "needs_attention" {
+		t.Errorf("feature-b state = %q, want %q", states["feature-b"], "needs_attention")
+	}
+
+	// C should be absent
+	if _, ok := states["feature-c"]; ok {
+		t.Error("feature-c should not be in active session states")
+	}
+}
+
+func TestGetActiveSessionStates_ExcludesIdle(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+	ws, _ := s.OpenWorkSession("feature-a", "session-1")
+	s.SetSessionState(ws.ID, "idle")
+
+	states, err := s.GetActiveSessionStates()
+	if err != nil {
+		t.Fatalf("GetActiveSessionStates: %v", err)
+	}
+	if _, ok := states["feature-a"]; ok {
+		t.Error("idle sessions should not appear in active session states")
+	}
+}
