@@ -237,6 +237,13 @@
     background: var(--yellow);
     animation: pulse 1s ease-in-out infinite;
   }
+  .status-stale {
+    color: var(--muted);
+  }
+  .status-stale .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--muted);
+  }
   .launch-btn {
     background: none; border: 1px solid var(--border); color: var(--muted);
     width: 24px; height: 24px; border-radius: 4px; cursor: pointer;
@@ -718,7 +725,26 @@ function render() {
 
       // Session status indicator
       var state = f.session_state || 'idle';
-      if (state === 'working') {
+      var lastHeartbeat = f.last_heartbeat ? new Date(f.last_heartbeat) : null;
+      var isStale = false;
+      var staleMinutes = 0;
+
+      if ((state === 'working' || state === 'needs_attention') && lastHeartbeat) {
+        staleMinutes = Math.floor((Date.now() - lastHeartbeat.getTime()) / 60000);
+        isStale = staleMinutes >= 5;
+      }
+
+      if (isStale) {
+        var statusSpan = document.createElement('span');
+        statusSpan.className = 'session-status status-stale';
+        var staleText = staleMinutes < 60
+            ? 'Stale (' + staleMinutes + 'm)'
+            : staleMinutes < 1440
+                ? 'Stale (' + Math.floor(staleMinutes / 60) + 'h)'
+                : 'Stale (' + Math.floor(staleMinutes / 1440) + 'd)';
+        statusSpan.innerHTML = '<span class="dot"></span> ' + staleText;
+        headerRow.appendChild(statusSpan);
+      } else if (state === 'working') {
         var statusSpan = document.createElement('span');
         statusSpan.className = 'session-status status-working';
         statusSpan.innerHTML = '<span class="pulse"></span> Working';
@@ -734,8 +760,12 @@ function render() {
       var launchBtn = document.createElement('button');
       launchBtn.className = 'launch-btn';
       launchBtn.innerHTML = '&#9654;'; // ▶
-      launchBtn.title = state === 'working' ? 'Session active' : 'Launch Claude session';
-      if (state === 'working') launchBtn.disabled = true;
+      if (state === 'working' && !isStale) {
+        launchBtn.title = 'Session active';
+        launchBtn.disabled = true;
+      } else {
+        launchBtn.title = 'Launch Claude session';
+      }
       (function(fid) {
         launchBtn.onclick = function(e) { launchSession(fid, e); };
       })(f.id);
