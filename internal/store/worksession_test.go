@@ -140,8 +140,8 @@ func TestGetActiveSessionStates(t *testing.T) {
 	}
 
 	// B should be present (it's the latest open session with non-idle state)
-	if states["feature-b"] != "needs_attention" {
-		t.Errorf("feature-b state = %q, want %q", states["feature-b"], "needs_attention")
+	if states["feature-b"].State != "needs_attention" {
+		t.Errorf("feature-b state = %q, want %q", states["feature-b"].State, "needs_attention")
 	}
 
 	// C should be absent
@@ -175,6 +175,29 @@ func TestTouchHeartbeat(t *testing.T) {
 	ws2, _ := s.GetWorkSession(ws.ID)
 	if ws2.LastHeartbeat == nil {
 		t.Fatal("expected LastHeartbeat to be set after TouchHeartbeat")
+	}
+}
+
+func TestGetActiveSessionStatesReturnsHeartbeat(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+	ws, _ := s.OpenWorkSession("feature-a", "session-1")
+	s.SetSessionState(ws.ID, "working")
+	s.TouchHeartbeat(ws.ID)
+
+	states, err := s.GetActiveSessionStates()
+	if err != nil {
+		t.Fatalf("GetActiveSessionStates: %v", err)
+	}
+	info, ok := states["feature-a"]
+	if !ok {
+		t.Fatal("expected feature-a in active session states")
+	}
+	if info.State != "working" {
+		t.Errorf("State = %q, want %q", info.State, "working")
+	}
+	if info.LastHeartbeat == nil {
+		t.Fatal("expected LastHeartbeat to be set")
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/sniffle6/claude-docket/internal/store"
 )
@@ -29,6 +30,7 @@ type featureWithProgress struct {
 	SubtaskProgress []subtaskProgress `json:"subtask_progress"`
 	IssueCount      int               `json:"issue_count"`
 	SessionState    string            `json:"session_state"`
+	LastHeartbeat   *time.Time        `json:"last_heartbeat,omitempty"`
 }
 
 func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler {
@@ -81,8 +83,9 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 			}
 			fp.IssueCount, _ = s.GetOpenIssueCount(f.ID)
 
-			if state, ok := sessionStates[f.ID]; ok {
-				fp.SessionState = state
+			if info, ok := sessionStates[f.ID]; ok {
+				fp.SessionState = info.State
+				fp.LastHeartbeat = info.LastHeartbeat
 			} else {
 				fp.SessionState = "idle"
 			}
@@ -214,7 +217,7 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 
 		// Check for active session — prevent duplicate launches
 		states, _ := s.GetActiveSessionStates()
-		if state, ok := states[id]; ok && (state == "working" || state == "needs_attention") {
+		if info, ok := states[id]; ok && (info.State == "working" || info.State == "needs_attention") {
 			http.Error(w, "session already active for this feature", 409)
 			return
 		}

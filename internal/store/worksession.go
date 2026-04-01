@@ -96,11 +96,17 @@ func (s *Store) SetSessionState(id int64, state string) error {
 	return nil
 }
 
-// GetActiveSessionStates returns feature_id → session_state for all open
+// SessionStateInfo holds session state and heartbeat for dashboard consumption.
+type SessionStateInfo struct {
+	State         string     `json:"state"`
+	LastHeartbeat *time.Time `json:"last_heartbeat"`
+}
+
+// GetActiveSessionStates returns feature_id → SessionStateInfo for all open
 // work sessions with a non-idle state.
-func (s *Store) GetActiveSessionStates() (map[string]string, error) {
+func (s *Store) GetActiveSessionStates() (map[string]SessionStateInfo, error) {
 	rows, err := s.db.Query(
-		`SELECT feature_id, session_state FROM work_sessions
+		`SELECT feature_id, session_state, last_heartbeat FROM work_sessions
 		 WHERE status = 'open' AND session_state != 'idle'`,
 	)
 	if err != nil {
@@ -108,13 +114,14 @@ func (s *Store) GetActiveSessionStates() (map[string]string, error) {
 	}
 	defer rows.Close()
 
-	states := make(map[string]string)
+	states := make(map[string]SessionStateInfo)
 	for rows.Next() {
-		var featureID, state string
-		if err := rows.Scan(&featureID, &state); err != nil {
+		var featureID string
+		var info SessionStateInfo
+		if err := rows.Scan(&featureID, &info.State, &info.LastHeartbeat); err != nil {
 			return nil, err
 		}
-		states[featureID] = state
+		states[featureID] = info
 	}
 	return states, nil
 }
