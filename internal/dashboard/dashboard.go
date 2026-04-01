@@ -218,8 +218,12 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 		// Check for active session — prevent duplicate launches
 		states, _ := s.GetActiveSessionStates()
 		if info, ok := states[id]; ok && (info.State == "working" || info.State == "needs_attention") {
-			http.Error(w, "session already active for this feature", 409)
-			return
+			// Allow launching over stale sessions (heartbeat older than 5 minutes)
+			stale := info.LastHeartbeat != nil && time.Since(*info.LastHeartbeat) > 5*time.Minute
+			if !stale {
+				http.Error(w, "session already active for this feature", 409)
+				return
+			}
 		}
 
 		// Get launch data
