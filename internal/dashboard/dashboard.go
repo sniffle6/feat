@@ -24,6 +24,7 @@ type featureWithProgress struct {
 	NextTask        string            `json:"next_task"`
 	SubtaskProgress []subtaskProgress `json:"subtask_progress"`
 	IssueCount      int               `json:"issue_count"`
+	SessionState    string            `json:"session_state"`
 }
 
 func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler {
@@ -43,6 +44,8 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 		if features == nil {
 			features = []store.Feature{}
 		}
+
+		sessionStates, _ := s.GetActiveSessionStates()
 
 		var result []featureWithProgress
 		for _, f := range features {
@@ -73,6 +76,12 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 				fp.SubtaskProgress = []subtaskProgress{}
 			}
 			fp.IssueCount, _ = s.GetOpenIssueCount(f.ID)
+
+			if state, ok := sessionStates[f.ID]; ok {
+				fp.SessionState = state
+			} else {
+				fp.SessionState = "idle"
+			}
 
 			result = append(result, fp)
 		}
