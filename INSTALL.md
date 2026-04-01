@@ -43,7 +43,6 @@ The binary lives inside the plugin directory. All hooks, MCP config, and skills 
 2. In any project, run `/docket-init` to set up tracking — this creates `.docket/` and adds the dispatch snippet to `CLAUDE.md`
 3. Remove any per-project copies of `.claude/agents/board-manager.md` and `.claude/skills/docket/` — the plugin provides these now
 4. Remove the docket entry from any project-level `.mcp.json` files — the plugin handles MCP registration
-5. If upgrading from an older install, you can remove `~/.local/share/docket/` — the binary now lives inside the plugin directory
 
 ## Updating
 
@@ -81,4 +80,4 @@ If a project needs custom board-manager behavior, place a local `.claude/agents/
 - **Dashboard blank** — The MCP server must be running. Verify `docket.exe` exists in the plugin directory
 - **Hooks not firing** — Restart Claude Code. Hooks are loaded once at session start
 - **Old global MCP config** — If you previously had docket in `~/.claude/.mcp.json`, remove that entry. The plugin handles registration now
-- **Old binary at `~/.local/share/docket/`** — Safe to remove. The binary now lives inside the plugin directory
+- **Old binary at `~/.local/share/docket/`** — Auto-removed by the installer. If it persists, safe to delete manually

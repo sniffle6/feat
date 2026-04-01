@@ -169,6 +169,10 @@ The installed plugin provides:
 - [docs/tags-and-archival.md](docs/tags-and-archival.md) — Feature tags and auto-archival
 - [docs/issue-tracking.md](docs/issue-tracking.md) — Bug/issue tracking per feature
 - [docs/quick-track.md](docs/quick-track.md) — Lightweight one-call tracking for small tasks
+- [docs/dashboard-session-control.md](docs/dashboard-session-control.md) — Session indicators and launch-from-dashboard
+- [docs/session-heartbeat-staleness.md](docs/session-heartbeat-staleness.md) — Staleness detection for crashed sessions
+- [docs/plugin-deployment-model.md](docs/plugin-deployment-model.md) — Plugin marketplace/cache architecture
+- [docs/dev-workflow.md](docs/dev-workflow.md) — Dev build-deploy-reload cycle
 - [docs/pretooluse-agent-nudge.md](docs/pretooluse-agent-nudge.md) — PreToolUse hook for subagent setup reminders
 - [docs/mcp-stability.md](docs/mcp-stability.md) — SQLite contention and crash prevention
 - [docs/dark-mode-toggle.md](docs/dark-mode-toggle.md) — Dashboard theming and dev mode

@@ -15,7 +15,7 @@ Docket automatically tracks session activity using Claude Code lifecycle hooks a
 The plugin declares hooks in `plugin/hooks/hooks.json`. Claude Code fires these automatically:
 
 1. `SessionStart` → opens work session, resets transcript offset, injects feature context
-2. `PostToolUse` (all tools) → flips session state `needs_attention` → `working` when Claude resumes after a stop. For Bash tool calls containing `git commit`, also appends to commits.log, auto-imports plan files, lists unchecked task items in system message (capped at 10)
+2. `PostToolUse` (fires on every tool use) → flips session state `needs_attention` → `working` when Claude resumes after a stop. Additionally, for Bash tool calls containing `git commit`, appends to commits.log, auto-imports plan files, lists unchecked task items in system message (capped at 10)
 3. `PreToolUse` (Agent only) → reminds to set up docket tracking before dispatching subagents
 4. `Stop` → parses transcript delta since last checkpoint, enqueues checkpoint job if meaningful, always allows stop
 5. `PreCompact` → forces a checkpoint (always enqueues, no threshold check)
