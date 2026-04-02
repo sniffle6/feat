@@ -63,6 +63,20 @@ func (s *Store) GetActiveWorkSession() (*WorkSession, error) {
 	return scanWorkSession(row)
 }
 
+// GetOpenWorkSessionForFeature returns the open work session for a feature, or nil if none.
+func (s *Store) GetOpenWorkSessionForFeature(featureID string) (*WorkSession, error) {
+	row := s.db.QueryRow(
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat
+         FROM work_sessions WHERE feature_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1`,
+		featureID,
+	)
+	ws, err := scanWorkSession(row)
+	if err != nil {
+		return nil, err
+	}
+	return ws, nil
+}
+
 func (s *Store) CloseWorkSession(id int64) error {
 	_, err := s.db.Exec(
 		`UPDATE work_sessions SET status = 'closed', ended_at = datetime('now') WHERE id = ?`, id,

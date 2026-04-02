@@ -255,13 +255,13 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 			featureTitle = data.Feature.Title
 		}
 
-		// Check for active session
-		states, _ := s.GetActiveSessionStates()
-		if info, ok := states[id]; ok && (info.State == "working" || info.State == "needs_attention") {
+		// Check for any open session (including idle — terminal is still open)
+		openSession, _ := s.GetOpenWorkSessionForFeature(id)
+		if openSession != nil {
 			staleMinutes := 0
 			isStale := false
-			if info.LastHeartbeat != nil {
-				staleMinutes = int(time.Since(*info.LastHeartbeat).Minutes())
+			if openSession.LastHeartbeat != nil {
+				staleMinutes = int(time.Since(*openSession.LastHeartbeat).Minutes())
 				isStale = staleMinutes > 5
 			}
 
