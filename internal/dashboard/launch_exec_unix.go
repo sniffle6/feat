@@ -10,6 +10,12 @@ import (
 	"runtime"
 )
 
+// isWindowAlive is a no-op on Unix — focus commands fail cleanly on their own
+// when the target window doesn't exist (non-zero exit code).
+func isWindowAlive(_ string) bool {
+	return true // assume alive, let focus command determine liveness
+}
+
 // launchInTerminal opens a new terminal window running claude for the given feature.
 func launchInTerminal(projDir, promptPath, featureTitle, featureID, launchDir string) error {
 	// Write a shell launcher script

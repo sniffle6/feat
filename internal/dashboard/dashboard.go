@@ -258,6 +258,15 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 		// Check for any open session (including idle — terminal is still open)
 		openSession, _ := s.GetOpenWorkSessionForFeature(id)
 		if openSession != nil {
+			// Verify the terminal window is actually alive (Windows-specific;
+			// Unix always returns true and relies on focus command exit codes)
+			if !isWindowAlive(id) {
+				// Window is gone — clean up stale session, fall through to launch
+				s.CloseWorkSession(openSession.ID)
+				openSession = nil
+			}
+		}
+		if openSession != nil {
 			cfg := ReadLaunchConfig(projDir)
 			staleMinutes := 0
 			isStale := false
