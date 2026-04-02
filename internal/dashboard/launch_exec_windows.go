@@ -18,14 +18,59 @@ func launchInTerminal(projDir, promptPath, featureTitle, featureID, launchDir st
 		return fmt.Errorf("failed to write launch script: %w", err)
 	}
 
+	vars := TemplateVars{
+		FeatureID:    featureID,
+		FeatureTitle: featureTitle,
+		ScriptPath:   cmdPath,
+		ProjectDir:   projDir,
+	}
+
+	cfg := ReadLaunchConfig(projDir)
+
+	var cmdLine string
+	if cfg.Launch != "" {
+		cmdLine = "cmd /C " + SubstituteTemplate(cfg.Launch, vars, "windows")
+	} else if _, err := exec.LookPath("wt"); err == nil {
+		tmpl := `wt -w docket-{{feature_id}} --title {{feature_title}} cmd /k {{script_path}}`
+		cmdLine = `cmd /C start "" ` + SubstituteTemplate(tmpl, vars, "windows")
+	} else {
+		tmpl := `cmd /c start {{feature_title}} cmd /k {{script_path}}`
+		cmdLine = SubstituteTemplate(tmpl, vars, "windows")
+	}
+
 	cmd := exec.Command("cmd")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CmdLine: fmt.Sprintf(`cmd /C start "" wt cmd /k "%s"`, cmdPath),
+		CmdLine: cmdLine,
 	}
 	cmd.Dir = projDir
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to launch: %w", err)
 	}
 	go cmd.Wait()
+	return nil
+}
+
+// focusTerminal brings an existing terminal window for the given feature into focus.
+func focusTerminal(projDir, featureID, featureTitle string) error {
+	cfg := ReadLaunchConfig(projDir)
+	if cfg.Focus == "" {
+		return fmt.Errorf("no focus command configured in launch.toml")
+	}
+
+	vars := TemplateVars{
+		FeatureID:    featureID,
+		FeatureTitle: featureTitle,
+		ProjectDir:   projDir,
+	}
+
+	cmdLine := "cmd /C " + SubstituteTemplate(cfg.Focus, vars, "windows")
+	cmd := exec.Command("cmd")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CmdLine: cmdLine,
+	}
+	cmd.Dir = projDir
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("focus command failed: %w", err)
+	}
 	return nil
 }
