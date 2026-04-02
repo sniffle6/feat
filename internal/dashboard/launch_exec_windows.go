@@ -83,26 +83,57 @@ func launchInTerminal(projDir, promptPath, featureTitle, featureID, launchDir st
 }
 
 // focusTerminal brings an existing terminal window for the given feature into focus.
+// If a focus command is configured in launch.toml, uses that.
+// Otherwise uses the PID file to find the process and walks up to its
+// window-owning ancestor, then calls SetForegroundWindow via PowerShell.
 func focusTerminal(projDir, featureID, featureTitle string) error {
 	cfg := ReadLaunchConfig(projDir)
-	if cfg.Focus == "" {
-		return fmt.Errorf("no focus command configured in launch.toml")
+
+	if cfg.Focus != "" {
+		// User-configured focus command
+		vars := TemplateVars{
+			FeatureID:    featureID,
+			FeatureTitle: featureTitle,
+			ProjectDir:   projDir,
+		}
+		cmdLine := "cmd /C " + SubstituteTemplate(cfg.Focus, vars, "windows")
+		cmd := exec.Command("cmd")
+		cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: cmdLine}
+		cmd.Dir = projDir
+		return cmd.Run()
 	}
 
-	vars := TemplateVars{
-		FeatureID:    featureID,
-		FeatureTitle: featureTitle,
-		ProjectDir:   projDir,
+	// Default: use PID file → find ancestor window → SetForegroundWindow
+	pidPath := filepath.Join(projDir, ".docket", "launch", featureID+".pid")
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		return fmt.Errorf("no PID file for feature %s", featureID)
+	}
+	pid := string(data)
+	for len(pid) > 0 && (pid[len(pid)-1] == '\n' || pid[len(pid)-1] == '\r' || pid[len(pid)-1] == ' ') {
+		pid = pid[:len(pid)-1]
 	}
 
-	cmdLine := "cmd /C " + SubstituteTemplate(cfg.Focus, vars, "windows")
-	cmd := exec.Command("cmd")
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CmdLine: cmdLine,
-	}
+	// PowerShell: walk up the process tree from the cmd.exe PID to find the
+	// first ancestor with a MainWindowHandle, then bring it to the foreground.
+	ps := fmt.Sprintf(`
+Add-Type -Name W -Namespace W -MemberDefinition '[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);'
+$cpid = %s
+for ($i = 0; $i -lt 10; $i++) {
+    $p = Get-Process -Id $cpid -ErrorAction SilentlyContinue
+    if ($p -and $p.MainWindowHandle -ne 0) {
+        if ([W.W]::IsIconic($p.MainWindowHandle)) { [W.W]::ShowWindow($p.MainWindowHandle, 9) | Out-Null }
+        [W.W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+        exit 0
+    }
+    $parent = (Get-CimInstance Win32_Process -Filter "ProcessId=$cpid" -ErrorAction SilentlyContinue).ParentProcessId
+    if (-not $parent -or $parent -eq $cpid) { break }
+    $cpid = $parent
+}
+exit 1
+`, pid)
+
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", ps)
 	cmd.Dir = projDir
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("focus command failed: %w", err)
-	}
-	return nil
+	return cmd.Run()
 }
