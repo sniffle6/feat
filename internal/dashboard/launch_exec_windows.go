@@ -60,14 +60,13 @@ func launchInTerminal(projDir, promptPath, featureTitle, featureID, launchDir st
 	var cmdLine string
 	if cfg.Launch != "" {
 		cmdLine = "cmd /C " + SubstituteTemplate(cfg.Launch, vars, "windows")
-	} else if _, err := exec.LookPath("wt"); err == nil {
-		// Default: Windows Terminal with named window
-		tmpl := `wt -w docket-{{feature_id}} --title {{feature_title}} cmd /k {{script_path}}`
-		cmdLine = "cmd /C " + SubstituteTemplate(tmpl, vars, "windows")
 	} else {
-		// Fallback: no wt — use start to open in a new window
-		tmpl := `cmd /c start {{feature_title}} cmd /k {{script_path}}`
-		cmdLine = SubstituteTemplate(tmpl, vars, "windows")
+		// Default: open a new console window via "start". Each session gets its
+		// own window with its own process — SetForegroundWindow can target them
+		// individually. The window title is set by the .cmd script ("title docket-<id>").
+		// We avoid wt named windows because WT runs as a single process with
+		// tabs, making individual window focus impossible.
+		cmdLine = fmt.Sprintf(`cmd /C start "docket-%s" cmd /k %s`, featureID, ShellEscape(cmdPath, "windows"))
 	}
 
 	cmd := exec.Command("cmd")
