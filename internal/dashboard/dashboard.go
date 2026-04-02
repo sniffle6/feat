@@ -2,15 +2,12 @@ package dashboard
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/sniffle6/claude-docket/internal/store"
@@ -261,29 +258,10 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 			return
 		}
 
-		// Write a .cmd launcher script to avoid nested quoting issues.
-		// The script has one command per line with clean quoting.
-		cmdScript := fmt.Sprintf("@echo off\r\ncd /d \"%s\"\r\nclaude --dangerously-skip-permissions --append-system-prompt-file \"%s\" \"Resume work on: %s (feature_id: %s). Check get_ready for current status.\"\r\n",
-			projDir, promptPath, data.Feature.Title, id)
-		cmdPath := filepath.Join(launchDir, id+".cmd")
-		if err := os.WriteFile(cmdPath, []byte(cmdScript), 0644); err != nil {
-			http.Error(w, "failed to write launch script: "+err.Error(), 500)
+		if err := launchInTerminal(projDir, promptPath, data.Feature.Title, id, launchDir); err != nil {
+			http.Error(w, err.Error(), 500)
 			return
 		}
-
-		// Open the launcher in a new terminal window
-		cmd := exec.Command("cmd")
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			CmdLine: fmt.Sprintf(`cmd /C start "" wt cmd /k "%s"`, cmdPath),
-		}
-		cmd.Dir = projDir
-		if err := cmd.Start(); err != nil {
-			http.Error(w, "failed to launch: "+err.Error(), 500)
-			return
-		}
-
-		// Don't wait for the process — it's a terminal
-		go cmd.Wait()
 
 		writeJSON(w, map[string]any{
 			"ok":          true,

@@ -8,39 +8,27 @@ import (
 
 const docketSectionHead = `## Feature Tracking (docket)
 
-This project uses ` + "`docket`" + ` for feature tracking. Dashboard: http://localhost:<port> (or run ` + "`/docket`" + `).
+This project uses ` + "`docket`" + ` for feature tracking. Dashboard: http://localhost:<port> (or run ` + "`/docket`" + `). Active feature context is auto-injected at session start.
 
-**Small tasks** (cosmetic changes, one-off fixes, config tweaks): call ` + "`quick_track`" + ` directly — one call, no agent dispatch needed.
+**Small tasks**: call ` + "`quick_track`" + ` — one call, no agent dispatch needed.
 
-**Larger features** (multi-step, plan-driven, complex):
-
-Start of work (after any brainstorming/planning) — call ` + "`get_ready`" + ` to find existing features, then dispatch ` + "`board-manager`" + ` agent (model: sonnet) to create or find a card. Use ` + "`type`" + ` param (feature/bugfix/chore/spike) to auto-generate subtask templates.
-
-Use ` + "`tags`" + ` param (comma-separated) on ` + "`add_feature`" + `/` + "`update_feature`" + ` to categorize work. New tags warn about existing tags to prevent typos.
-
-Done features are auto-archived after 7 days. Use ` + "`list_features(status=\"archived\")`" + ` to see them. ` + "`update_feature(status=\"planned\")`" + ` to unarchive.
+**Larger features**: call ` + "`get_ready`" + `, then dispatch ` + "`board-manager`" + ` agent (model: sonnet) to create or find a card. Use ` + "`type`" + ` (feature/bugfix/chore/spike) for auto-generated subtask templates.
 `
 
 const docketSectionSuperpowers = `
-**Plan execution (superpowers):** When using executing-plans or subagent-driven-development, set up docket BEFORE dispatching the first task — call ` + "`get_ready`" + `, create/find a feature card, and use ` + "`add_task_item`" + ` for each plan task. A PreToolUse hook will remind you if you forget.
+**Plan execution (superpowers):** When using executing-plans or subagent-driven-development, set up docket first — ` + "`get_ready`" + `, create/find a card, ` + "`add_task_item`" + ` per plan task.
 `
 
 const docketSectionTail = `
 After a commit — use **direct MCP calls**, not agent dispatch:
-- ` + "`update_feature`" + ` — set left_off, key_files, status, tags. Completion gate blocks ` + "`done`" + ` with unchecked items — pass ` + "`force=true`" + ` + ` + "`force_reason`" + ` to override.
-- ` + "`complete_task_item`" + ` — check off items with outcome and commit_hash (pass ` + "`items`" + ` JSON array for batch)
-- ` + "`add_decision`" + ` — record notable decisions (accepted/rejected with reason)
+- ` + "`update_feature`" + ` — left_off, key_files, status, tags. Completion gate blocks ` + "`done`" + ` with unchecked items — ` + "`force=true`" + ` + ` + "`force_reason`" + ` to override.
+- ` + "`complete_task_item`" + ` — check off items with outcome and commit_hash (` + "`items`" + ` JSON array for batch)
+- ` + "`add_decision`" + ` — accepted/rejected with reason
 - ` + "`add_issue`" + ` / ` + "`resolve_issue`" + ` — track bugs found during work
 
-Plan files committed during work are auto-imported by hooks. Only dispatch board-manager when the update needs judgment (restructuring imported plans, creating new subtasks).
+Use ` + "`get_context`" + ` (not ` + "`get_feature`" + `) for routine status checks (~15 lines, token-efficient).
 
-After subagent work — subagent commits bypass hooks. Use direct MCP calls to batch-update the feature.
-
-Use ` + "`get_context`" + ` (not ` + "`get_feature`" + `) for routine status checks — it's token-efficient (~15 lines).
-
-Session context is captured automatically via transcript checkpoints (Stop/PreCompact hooks). Handoff files are written at SessionEnd. Use ` + "`/checkpoint`" + ` to force a manual checkpoint, ` + "`/end-session`" + ` to close the work session without closing Claude.
-
-Carry the feature ID across the session.
+Commit tracking, session context, and handoff files are automatic (hooks). Use ` + "`/checkpoint`" + ` for manual checkpoints, ` + "`/end-session`" + ` to close the work session without closing Claude.
 
 **If user rejects a docket update**, fix the issue and retry — don't drop tracking.
 `

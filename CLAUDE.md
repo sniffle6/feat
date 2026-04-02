@@ -20,7 +20,7 @@ go test ./...
 bash install.sh
 ```
 
-Builds binary to `~/.local/share/docket/docket.exe`, installs plugin to `~/.claude/plugins/marketplaces/local/docket/`.
+Builds binary and installs plugin to `~/.claude/plugins/marketplaces/local/docket/`.
 
 ## Dev Workflow
 
@@ -38,7 +38,11 @@ After Go code changes:
 bash dev-build.sh
 ```
 
-Then restart Claude Code or start a new session. Plugin file changes (hooks, skills, agents) only need `/reload-plugins`.
+Then run `/reload-plugins` (restarts the MCP server with the new binary). Plugin file changes (hooks, skills, agents) also just need `/reload-plugins`.
+
+## Docs
+
+`docs/` contains project feature docs (tracked in git). `docs/superpowers/` contains working artifacts from brainstorming/planning skills (gitignored). Don't mix them.
 
 ## Key Files
 
@@ -49,8 +53,9 @@ Then restart Claude Code or start a new session. Plugin file changes (hooks, ski
 - `cmd/docket/export.go` — handoff file export for context resets
 - `internal/mcp/tools.go` — tool registration (18 tools), handlers split across tools_*.go
 - `internal/mcp/tools_checkpoint.go` — checkpoint MCP tool, transcript path finder
+- `internal/mcp/tools_session.go` — session-related MCP tool handlers (compact_sessions)
 - `internal/store/store.go` — SQLite data layer, Feature/FeatureUpdate structs, completion gate
-- `internal/store/migrate.go` — schema migrations (v1-v11)
+- `internal/store/migrate.go` — schema migrations (v1-v13)
 - `internal/store/checkpoint.go` — checkpoint job queue + observation CRUD
 - `internal/store/worksession.go` — work session CRUD (open, close, get active)
 - `internal/store/templates.go` — feature type templates (feature/bugfix/chore/spike)
@@ -61,6 +66,8 @@ Then restart Claude Code or start a new session. Plugin file changes (hooks, ski
 - `internal/checkpoint/anthropic.go` — Anthropic Messages API summarizer
 - `internal/checkpoint/config.go` — checkpoint config from env vars
 - `internal/handoff/render.go` — shared handoff rendering (used by hooks and MCP tools)
+- `internal/dashboard/dashboard.go` — HTTP dashboard server, API endpoints, SSE events
+- `internal/dashboard/launch.go` — launch prompt/script generation for dashboard play button
 - `dashboard/index.html` — single-file frontend (embedded via Go embed)
 - `plugin/` — Claude Code plugin (agent, skills, hooks, MCP config, binary at install time)
 - `plugin/.mcp.json` — MCP server config using `${CLAUDE_PLUGIN_ROOT}/docket.exe`
@@ -101,36 +108,32 @@ Add a new `const schemaVN` in `migrate.go`, then `db.Exec(schemaVN)` in `migrate
 
 Store tests: `s, _ := Open(t.TempDir())` gives a fresh DB. No mocks, no cleanup needed.
 
+## Release Versioning
+
+After each commit, consider whether the accumulated changes since the last release tag warrant a version bump. Check `git log <last-tag>..HEAD --oneline` to see what's unreleased. Binary-affecting changes (Go code, schema migrations, new endpoints) should ship as a release. Docs-only or config-only changes can wait.
+
+## Push Back
+
+If there's a better approach than what's being asked for — say so. Explain why and propose the alternative. Don't just comply with a suboptimal request when you can see a clearly better path.
+
 ## Feature Tracking (docket)
 
-This project uses `docket` for feature tracking. Dashboard: http://localhost:<port> (or run `/docket`).
+This project uses `docket` for feature tracking. Dashboard: http://localhost:<port> (or run `/docket`). Active feature context is auto-injected at session start.
 
-**Small tasks** (cosmetic changes, one-off fixes, config tweaks): call `quick_track` directly — one call, no agent dispatch needed.
+**Small tasks**: call `quick_track` — one call, no agent dispatch needed.
 
-**Larger features** (multi-step, plan-driven, complex):
+**Larger features**: call `get_ready`, then dispatch `board-manager` agent (model: sonnet) to create or find a card. Use `type` (feature/bugfix/chore/spike) for auto-generated subtask templates.
 
-Start of work (after any brainstorming/planning) — call `get_ready` to find existing features, then dispatch `board-manager` agent (model: sonnet) to create or find a card. Use `type` param (feature/bugfix/chore/spike) to auto-generate subtask templates.
-
-Use `tags` param (comma-separated) on `add_feature`/`update_feature` to categorize work. New tags warn about existing tags to prevent typos.
-
-Done features are auto-archived after 7 days. Use `list_features(status="archived")` to see them. `update_feature(status="planned")` to unarchive.
-
-**Plan execution (superpowers):** When using executing-plans or subagent-driven-development, set up docket BEFORE dispatching the first task — call `get_ready`, create/find a feature card, and use `add_task_item` for each plan task. A PreToolUse hook will remind you if you forget.
+**Plan execution (superpowers):** When using executing-plans or subagent-driven-development, set up docket first — `get_ready`, create/find a card, `add_task_item` per plan task.
 
 After a commit — use **direct MCP calls**, not agent dispatch:
-- `update_feature` — set left_off, key_files, status, tags. Completion gate blocks `done` with unchecked items — pass `force=true` + `force_reason` to override.
-- `complete_task_item` — check off items with outcome and commit_hash (pass `items` JSON array for batch)
-- `add_decision` — record notable decisions (accepted/rejected with reason)
+- `update_feature` — left_off, key_files, status, tags. Completion gate blocks `done` with unchecked items — `force=true` + `force_reason` to override.
+- `complete_task_item` — check off items with outcome and commit_hash (`items` JSON array for batch)
+- `add_decision` — accepted/rejected with reason
 - `add_issue` / `resolve_issue` — track bugs found during work
 
-Plan files committed during work are auto-imported by hooks. Only dispatch board-manager when the update needs judgment (restructuring imported plans, creating new subtasks).
+Use `get_context` (not `get_feature`) for routine status checks (~15 lines, token-efficient).
 
-After subagent work — subagent commits bypass hooks. Use direct MCP calls to batch-update the feature.
-
-Use `get_context` (not `get_feature`) for routine status checks — it's token-efficient (~15 lines).
-
-Session logging and handoff files are handled automatically by the Stop hook.
-
-Carry the feature ID across the session.
+Commit tracking, session context, and handoff files are automatic (hooks). Use `/checkpoint` for manual checkpoints, `/end-session` to close the work session without closing Claude.
 
 **If user rejects a docket update**, fix the issue and retry — don't drop tracking.
