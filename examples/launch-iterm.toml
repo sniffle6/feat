@@ -1,0 +1,5 @@
+# iTerm2 — launches via macOS open command
+# Note: focus activates iTerm2 globally, not a specific window.
+# For per-feature focus, use iTerm2 AppleScript API to target by session name.
+launch = "open -a iTerm {{script_path}}"
+focus = "osascript -e 'tell application \"iTerm2\" to activate'"

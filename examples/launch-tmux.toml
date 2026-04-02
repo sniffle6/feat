@@ -1,0 +1,3 @@
+# tmux — uses named windows
+launch = "tmux new-window -n docket-{{feature_id}} sh {{script_path}}"
+focus = "tmux select-window -t docket-{{feature_id}}"

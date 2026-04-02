@@ -1,0 +1,3 @@
+# Kitty — requires allow_remote_control yes in kitty.conf
+launch = "kitty --title docket-{{feature_id}} sh {{script_path}}"
+focus = "kitty @ focus-window --match title:docket-{{feature_id}}"

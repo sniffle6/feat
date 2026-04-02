@@ -1,0 +1,4 @@
+# Windows Terminal — named windows for auto-focus
+# Template vars are auto-escaped. Do NOT manually quote them.
+launch = "wt -w docket-{{feature_id}} --title {{feature_title}} cmd /k {{script_path}}"
+focus = "wt -w docket-{{feature_id}}"

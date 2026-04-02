@@ -1,0 +1,3 @@
+# Alacritty — no focus support (no window management API)
+# Focus will show a toast with the window title for manual alt-tab.
+launch = "alacritty --title docket-{{feature_id}} -e sh {{script_path}}"
