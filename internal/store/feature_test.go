@@ -199,3 +199,33 @@ func TestCompactSessionsTooFew(t *testing.T) {
 		t.Errorf("compacted %d, want 0", n)
 	}
 }
+
+func TestSpecPath(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	f, err := s.AddFeature("Spec Test", "testing spec_path")
+	if err != nil {
+		t.Fatalf("AddFeature: %v", err)
+	}
+	if f.SpecPath != "" {
+		t.Fatalf("expected empty spec_path, got %q", f.SpecPath)
+	}
+
+	path := "docs/superpowers/specs/2026-04-01-test-design.md"
+	err = s.UpdateFeature(f.ID, FeatureUpdate{SpecPath: &path})
+	if err != nil {
+		t.Fatalf("UpdateFeature: %v", err)
+	}
+
+	got, err := s.GetFeature(f.ID)
+	if err != nil {
+		t.Fatalf("GetFeature: %v", err)
+	}
+	if got.SpecPath != path {
+		t.Fatalf("expected spec_path %q, got %q", path, got.SpecPath)
+	}
+}

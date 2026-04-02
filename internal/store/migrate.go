@@ -167,6 +167,10 @@ const schemaV13 = `
 ALTER TABLE work_sessions ADD COLUMN last_heartbeat DATETIME;
 `
 
+const schemaV14 = `
+ALTER TABLE features ADD COLUMN spec_path TEXT NOT NULL DEFAULT '';
+`
+
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec(schemaV1); err != nil {
 		return err
@@ -195,5 +199,7 @@ func migrate(db *sql.DB) error {
 	db.Exec(schemaV12)
 	// v13: add last_heartbeat column to work_sessions
 	db.Exec(schemaV13)
+	// v14: add spec_path column to features
+	db.Exec(schemaV14)
 	return nil
 }
