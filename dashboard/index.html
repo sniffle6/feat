@@ -208,6 +208,102 @@
   }
   html.light .issue-badge { background: #FFD0D0; color: #8A2020; }
 
+  .spec-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #4ECDC420;
+    color: var(--teal);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s;
+  }
+  .spec-badge:hover { background: #4ECDC440; }
+  html.light .spec-badge { background: #E0F5F3; color: #1A7A72; }
+  html.light .spec-badge:hover { background: #C0EBE8; }
+
+  /* Spec modal */
+  .spec-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--overlay-bg);
+    z-index: 100;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 5vh;
+  }
+  .spec-overlay.open { display: flex; }
+  .spec-modal {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    width: 90%;
+    max-width: 720px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .spec-modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .spec-modal-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+  }
+  .spec-modal-path {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: monospace;
+    background: var(--bg);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .spec-modal-close {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .spec-modal-close:hover { border-color: var(--primary); color: var(--primary); }
+  .spec-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.6;
+  }
+  /* Markdown rendering styles */
+  .spec-modal-body h1, .spec-modal-body h2, .spec-modal-body h3 { color: var(--primary); margin: 16px 0 8px; }
+  .spec-modal-body h1 { font-size: 20px; }
+  .spec-modal-body h2 { font-size: 18px; }
+  .spec-modal-body h3 { font-size: 16px; }
+  .spec-modal-body p { margin-bottom: 12px; color: var(--secondary); }
+  .spec-modal-body ul, .spec-modal-body ol { margin-left: 20px; margin-bottom: 12px; color: var(--secondary); }
+  .spec-modal-body li { margin-bottom: 4px; }
+  .spec-modal-body code { font-size: 13px; background: var(--bg); padding: 1px 6px; border-radius: 3px; }
+  .spec-modal-body pre { background: var(--bg); padding: 12px; border-radius: 6px; overflow-x: auto; margin-bottom: 12px; }
+  .spec-modal-body pre code { padding: 0; background: none; }
+  .spec-modal-body a { color: var(--teal); }
+  .spec-modal-body blockquote { border-left: 3px solid var(--border); padding-left: 12px; color: var(--muted); margin-bottom: 12px; }
+
   /* Session status */
   .session-status {
     display: inline-flex;
@@ -819,6 +915,18 @@ function render() {
         card.appendChild(loDiv);
       }
 
+      // Spec badge
+      if (f.spec_path) {
+        var specBadge = document.createElement('button');
+        specBadge.className = 'spec-badge';
+        specBadge.textContent = '\uD83D\uDCC4 Spec';
+        specBadge.title = f.spec_path;
+        (function(path, title) {
+          specBadge.onclick = function(e) { e.stopPropagation(); showSpec(path, title); };
+        })(f.spec_path, f.title);
+        card.appendChild(specBadge);
+      }
+
       if (f.issue_count > 0) {
         var issueBadge = document.createElement('div');
         issueBadge.className = 'issue-badge';
@@ -1331,6 +1439,37 @@ async function loadProject() {
 }
 
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closePanel(); });
+
+async function showSpec(path, title) {
+  var overlay = document.getElementById('specOverlay');
+  var specTitle = document.getElementById('specTitle');
+  var specPath = document.getElementById('specPath');
+  var specBody = document.getElementById('specBody');
+
+  specTitle.textContent = title;
+  specPath.textContent = path;
+  specBody.innerHTML = '<p style="color:var(--muted)">Loading...</p>';
+  overlay.classList.add('open');
+
+  try {
+    var resp = await fetch('/api/spec?path=' + encodeURIComponent(path));
+    if (!resp.ok) throw new Error('Failed to load spec');
+    var md = await resp.text();
+    specBody.innerHTML = marked.parse(md);
+  } catch (e) {
+    specBody.innerHTML = '<p style="color:var(--blocked)">Could not load spec: ' + e.message + '</p>';
+  }
+}
+
+function closeSpec(e) {
+  if (e && e.target !== document.getElementById('specOverlay')) return;
+  document.getElementById('specOverlay').classList.remove('open');
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeSpec();
+});
+
 loadProject();
 load();
 setInterval(function() {
@@ -1338,5 +1477,17 @@ setInterval(function() {
   // Don't refresh panel — it wipes unsaved notes textarea
 }, 10000);
 </script>
+<!-- Spec viewer modal -->
+<div class="spec-overlay" id="specOverlay" onclick="closeSpec(event)">
+  <div class="spec-modal" onclick="event.stopPropagation()">
+    <div class="spec-modal-header">
+      <span class="spec-modal-title" id="specTitle"></span>
+      <span class="spec-modal-path" id="specPath"></span>
+      <button class="spec-modal-close" onclick="closeSpec()">&times;</button>
+    </div>
+    <div class="spec-modal-body" id="specBody"></div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </body>
 </html>
