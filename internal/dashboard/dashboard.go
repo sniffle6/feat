@@ -350,10 +350,9 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 
 		// Create a placeholder work session so subsequent clicks detect it
 		// before the launched Claude's SessionStart hook fires.
-		// OpenWorkSession will close any stale sessions and either resume
-		// or create a new one. The "dashboard-launch" session ID is a
-		// placeholder — the real Claude session will replace it on SessionStart.
-		s.OpenWorkSession(id, "dashboard-launch")
+		// Uses CreatePlaceholderSession (not OpenWorkSession) to avoid
+		// closing other features' open sessions.
+		s.CreatePlaceholderSession(id)
 
 		writeJSON(w, map[string]any{
 			"action":      "launched",

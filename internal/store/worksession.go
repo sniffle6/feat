@@ -46,6 +46,24 @@ func (s *Store) OpenWorkSession(featureID, claudeSessionID string) (*WorkSession
 	return s.GetWorkSession(id)
 }
 
+// CreatePlaceholderSession creates an open work session for a feature without
+// closing other open sessions. Used by the dashboard launch button to mark a
+// feature as "launching" before the real Claude session starts.
+func (s *Store) CreatePlaceholderSession(featureID string) error {
+	// Check if one already exists for this feature
+	var count int
+	s.db.QueryRow(`SELECT COUNT(*) FROM work_sessions WHERE feature_id = ? AND status = 'open'`, featureID).Scan(&count)
+	if count > 0 {
+		return nil // already has an open session
+	}
+	now := time.Now().UTC()
+	_, err := s.db.Exec(
+		`INSERT INTO work_sessions (feature_id, claude_session_id, status, started_at, last_heartbeat) VALUES (?, ?, 'open', ?, ?)`,
+		featureID, "dashboard-launch", now, now,
+	)
+	return err
+}
+
 func (s *Store) GetWorkSession(id int64) (*WorkSession, error) {
 	row := s.db.QueryRow(
 		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat
