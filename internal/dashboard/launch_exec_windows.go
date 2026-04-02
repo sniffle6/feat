@@ -102,7 +102,9 @@ func focusTerminal(projDir, featureID, featureTitle string) error {
 		return cmd.Run()
 	}
 
-	// Default: use PID file → find ancestor window → SetForegroundWindow
+	// Default: read the PID from the .pid file, use VBScript AppActivate
+	// to bring the console window to the foreground by process ID.
+	// AppActivate works with console windows where SetForegroundWindow doesn't.
 	pidPath := filepath.Join(projDir, ".docket", "launch", featureID+".pid")
 	data, err := os.ReadFile(pidPath)
 	if err != nil {
@@ -113,26 +115,13 @@ func focusTerminal(projDir, featureID, featureTitle string) error {
 		pid = pid[:len(pid)-1]
 	}
 
-	// PowerShell: walk up the process tree from the cmd.exe PID to find the
-	// first ancestor with a MainWindowHandle, then bring it to the foreground.
-	ps := fmt.Sprintf(`
-Add-Type -Name W -Namespace W -MemberDefinition '[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);'
-$cpid = %s
-for ($i = 0; $i -lt 10; $i++) {
-    $p = Get-Process -Id $cpid -ErrorAction SilentlyContinue
-    if ($p -and $p.MainWindowHandle -ne 0) {
-        if ([W.W]::IsIconic($p.MainWindowHandle)) { [W.W]::ShowWindow($p.MainWindowHandle, 9) | Out-Null }
-        [W.W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
-        exit 0
-    }
-    $parent = (Get-CimInstance Win32_Process -Filter "ProcessId=$cpid" -ErrorAction SilentlyContinue).ParentProcessId
-    if (-not $parent -or $parent -eq $cpid) { break }
-    $cpid = $parent
-}
-exit 1
-`, pid)
-
-	cmd := exec.Command("powershell", "-NoProfile", "-Command", ps)
+	// WScript.Shell AppActivate accepts a PID and activates that process's window
+	vbs := fmt.Sprintf(`Set ws = CreateObject("WScript.Shell") : ws.AppActivate %s`, pid)
+	vbsPath := filepath.Join(projDir, ".docket", "launch", "focus.vbs")
+	if err := os.WriteFile(vbsPath, []byte(vbs), 0644); err != nil {
+		return fmt.Errorf("failed to write focus script: %w", err)
+	}
+	cmd := exec.Command("cscript", "//nologo", vbsPath)
 	cmd.Dir = projDir
 	return cmd.Run()
 }
