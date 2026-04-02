@@ -135,6 +135,23 @@ func (s *Store) TouchHeartbeat(id int64) {
 	s.db.Exec(`UPDATE work_sessions SET last_heartbeat = datetime('now') WHERE id = ?`, id)
 }
 
+// CloseWorkSessionByFeature closes the open work session for a feature.
+// Returns the closed session's ID, or 0 if none was open.
+func (s *Store) CloseWorkSessionByFeature(featureID string) (int64, error) {
+	var id int64
+	err := s.db.QueryRow(
+		`SELECT id FROM work_sessions WHERE feature_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1`,
+		featureID,
+	).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("no open session for feature %s", featureID)
+	}
+	if err := s.CloseWorkSession(id); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
 func scanWorkSession(row scannable) (*WorkSession, error) {
 	var ws WorkSession
 	var stale int

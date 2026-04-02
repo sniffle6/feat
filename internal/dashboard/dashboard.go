@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
@@ -230,37 +231,89 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 		writeJSON(w, map[string]string{"ok": "true"})
 	})
 
-	mux.HandleFunc("POST /api/launch/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-
-		// Check for active session — prevent duplicate launches
-		states, _ := s.GetActiveSessionStates()
-		if info, ok := states[id]; ok && (info.State == "working" || info.State == "needs_attention") {
-			// Allow launching over stale sessions (heartbeat older than 5 minutes)
-			stale := info.LastHeartbeat != nil && time.Since(*info.LastHeartbeat) > 5*time.Minute
-			if !stale {
-				http.Error(w, "session already active for this feature", 409)
-				return
-			}
-		}
-
-		// Get launch data
-		data, err := s.GetLaunchData(id)
+	mux.HandleFunc("DELETE /api/session/{featureId}", func(w http.ResponseWriter, r *http.Request) {
+		featureID := r.PathValue("featureId")
+		closedID, err := s.CloseWorkSessionByFeature(featureID)
 		if err != nil {
 			http.Error(w, err.Error(), 404)
 			return
 		}
+		writeJSON(w, map[string]any{"ok": true, "closed_session_id": closedID})
+	})
+
+	mux.HandleFunc("POST /api/launch/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
 
 		projDir := devDir
 		if projDir == "" {
 			projDir, _ = os.Getwd()
 		}
 
+		// Get feature title early — needed for focus commands that use {{feature_title}}
+		featureTitle := id // fallback to ID if lookup fails
+		if data, err := s.GetLaunchData(id); err == nil {
+			featureTitle = data.Feature.Title
+		}
+
+		// Check for active session
+		states, _ := s.GetActiveSessionStates()
+		if info, ok := states[id]; ok && (info.State == "working" || info.State == "needs_attention") {
+			staleMinutes := 0
+			isStale := false
+			if info.LastHeartbeat != nil {
+				staleMinutes = int(time.Since(*info.LastHeartbeat).Minutes())
+				isStale = staleMinutes > 5
+			}
+
+			// Try focus command
+			if err := focusTerminal(projDir, id, featureTitle); err == nil {
+				writeJSON(w, map[string]any{
+					"action":     "focused",
+					"feature_id": id,
+					"message":    fmt.Sprintf("Focused session: docket-%s", id),
+				})
+				return
+			}
+
+			// Focus failed or not configured — check why
+			cfg := ReadLaunchConfig(projDir)
+			if cfg.Focus != "" {
+				// Focus command exists but failed
+				writeJSON(w, map[string]any{
+					"action":         "focus_failed",
+					"feature_id":     id,
+					"error":          "Focus command failed — window may be closed",
+					"close_relaunch": true,
+				})
+				return
+			}
+
+			// No focus command — advisory toast
+			msg := fmt.Sprintf("Session active: docket-%s", id)
+			if isStale {
+				msg = fmt.Sprintf("Session may be stale (no heartbeat in %dm): docket-%s", staleMinutes, id)
+			}
+			msg += " — configure focus in launch.toml for one-click switching"
+			writeJSON(w, map[string]any{
+				"action":         "toast",
+				"feature_id":     id,
+				"message":        msg,
+				"close_relaunch": true,
+			})
+			return
+		}
+
+		// No active session — launch
+		data, err := s.GetLaunchData(id)
+		if err != nil {
+			http.Error(w, err.Error(), 404)
+			return
+		}
+
 		// Check for existing handoff file, use it as base if available
 		var promptContent string
 		handoffPath := filepath.Join(projDir, ".docket", "handoff", id+".md")
 		if existing, err := os.ReadFile(handoffPath); err == nil {
-			// Append unchecked tasks and open issues not already in the handoff
 			promptContent = string(existing)
 			extra := renderLaunchExtras(data)
 			if extra != "" {
@@ -285,7 +338,7 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 		}
 
 		writeJSON(w, map[string]any{
-			"ok":          true,
+			"action":      "launched",
 			"feature_id":  id,
 			"prompt_file": promptPath,
 		})
