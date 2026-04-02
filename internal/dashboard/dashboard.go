@@ -278,6 +278,33 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 		writeJSON(w, map[string]string{"name": name})
 	})
 
+	mux.HandleFunc("GET /api/spec", func(w http.ResponseWriter, r *http.Request) {
+		specPath := r.URL.Query().Get("path")
+		if specPath == "" {
+			http.Error(w, "missing path parameter", 400)
+			return
+		}
+		// Safety: reject directory traversal and absolute paths
+		if strings.Contains(specPath, "..") || filepath.IsAbs(specPath) {
+			http.Error(w, "invalid path", 400)
+			return
+		}
+
+		baseDir := devDir
+		if baseDir == "" {
+			baseDir, _ = os.Getwd()
+		}
+		fullPath := filepath.Join(baseDir, filepath.Clean(specPath))
+
+		data, err := os.ReadFile(fullPath)
+		if err != nil {
+			http.Error(w, "spec not found", 404)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(data)
+	})
+
 	// Serve dashboard files — prefer local files on disk for dev, fall back to embedded
 	if static != nil {
 		fileServer := http.FileServerFS(static)
