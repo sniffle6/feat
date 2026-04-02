@@ -350,6 +350,7 @@
   .launch-btn:hover { border-color: var(--teal); color: var(--teal); }
   .launch-btn:disabled { opacity: 0.3; cursor: not-allowed; }
   .launch-btn:disabled:hover { border-color: var(--border); color: var(--muted); }
+  .session-status.status-stale { opacity: 0.5; }
   .toast {
     position: fixed; bottom: 20px; right: 20px;
     background: var(--elevated); color: var(--text); border: 1px solid var(--border);
@@ -764,26 +765,76 @@ function showToast(msg) {
   setTimeout(function() { el.classList.remove('visible'); }, 3000);
 }
 
+function showToastWithAction(msg, btnText, onClick) {
+  var el = document.getElementById('toast');
+  el.innerHTML = '';
+  var span = document.createElement('span');
+  span.textContent = msg + ' ';
+  el.appendChild(span);
+  var btn = document.createElement('button');
+  btn.textContent = btnText;
+  btn.style.cssText = 'margin-left:8px;padding:2px 8px;border:1px solid var(--teal);color:var(--teal);background:transparent;border-radius:4px;cursor:pointer;font-size:12px;';
+  btn.onclick = function(e) { e.stopPropagation(); el.classList.remove('visible'); onClick(); };
+  el.appendChild(btn);
+  el.classList.add('visible');
+  setTimeout(function() { el.classList.remove('visible'); }, 8000);
+}
+
 async function launchSession(featureId, e) {
   e.stopPropagation();
   try {
     var res = await fetch(API + '/api/launch/' + featureId, { method: 'POST' });
-    if (res.status === 400) {
-      showToast('Setup needed: configure DOCKET_LAUNCH_CMD');
-      return;
-    }
-    if (res.status === 409) {
-      showToast('Session already active');
-      return;
-    }
     if (!res.ok) {
       var text = await res.text();
       showToast('Launch failed: ' + text);
       return;
     }
-    showToast('Session launched');
+    var data = await res.json();
+    switch (data.action) {
+      case 'launched':
+        showToast('Session launched');
+        break;
+      case 'focused':
+        showToast(data.message || 'Session focused');
+        break;
+      case 'focus_failed':
+        showToastWithAction(data.error || 'Focus failed', 'Close & Relaunch', function() {
+          closeAndRelaunch(featureId);
+        });
+        break;
+      case 'toast':
+        showToastWithAction(data.message, 'Close & Relaunch', function() {
+          closeAndRelaunch(featureId);
+        });
+        break;
+      default:
+        showToast('Unknown action: ' + data.action);
+    }
   } catch (err) {
     showToast('Launch error: ' + err.message);
+  }
+}
+
+async function closeAndRelaunch(featureId) {
+  try {
+    var closeRes = await fetch(API + '/api/session/' + featureId, { method: 'DELETE' });
+    if (!closeRes.ok) {
+      showToast('Close failed — session may already be closed');
+    }
+    var launchRes = await fetch(API + '/api/launch/' + featureId, { method: 'POST' });
+    if (!launchRes.ok) {
+      var text = await launchRes.text();
+      showToast('Relaunch failed: ' + text);
+      return;
+    }
+    var data = await launchRes.json();
+    if (data.action === 'launched') {
+      showToast('Session relaunched');
+    } else {
+      showToast(data.message || 'Relaunch: ' + data.action);
+    }
+  } catch (err) {
+    showToast('Relaunch error: ' + err.message);
   }
 }
 
@@ -865,11 +916,11 @@ function render() {
       // Launch button
       var launchBtn = document.createElement('button');
       launchBtn.className = 'launch-btn';
-      launchBtn.innerHTML = '&#9654;'; // ▶
       if (state === 'working' && !isStale) {
-        launchBtn.title = 'Session active';
-        launchBtn.disabled = true;
+        launchBtn.innerHTML = '&#8599;'; // ↗ focus icon
+        launchBtn.title = 'Focus or manage session';
       } else {
+        launchBtn.innerHTML = '&#9654;'; // ▶ play icon
         launchBtn.title = 'Launch Claude session';
       }
       (function(fid) {
