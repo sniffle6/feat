@@ -1438,7 +1438,12 @@ async function loadProject() {
   } catch(e) {}
 }
 
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closePanel(); });
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    if (document.getElementById('specOverlay').classList.contains('open')) { closeSpec(); }
+    else { closePanel(); }
+  }
+});
 
 async function showSpec(path, title) {
   var overlay = document.getElementById('specOverlay');
@@ -1465,10 +1470,6 @@ function closeSpec(e) {
   if (e && e.target !== document.getElementById('specOverlay')) return;
   document.getElementById('specOverlay').classList.remove('open');
 }
-
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeSpec();
-});
 
 loadProject();
 load();
