@@ -258,6 +258,7 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 		// Check for any open session (including idle — terminal is still open)
 		openSession, _ := s.GetOpenWorkSessionForFeature(id)
 		if openSession != nil {
+			cfg := ReadLaunchConfig(projDir)
 			staleMinutes := 0
 			isStale := false
 			if openSession.LastHeartbeat != nil {
@@ -266,7 +267,8 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 			}
 
 			// Try focus command
-			if err := focusTerminal(projDir, id, featureTitle); err == nil {
+			focusErr := focusTerminal(projDir, id, featureTitle)
+			if focusErr == nil {
 				writeJSON(w, map[string]any{
 					"action":     "focused",
 					"feature_id": id,
@@ -276,7 +278,7 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 			}
 
 			// Focus failed or not configured — check why
-			cfg := ReadLaunchConfig(projDir)
+			cfg = ReadLaunchConfig(projDir)
 			if cfg.Focus != "" {
 				// Focus command exists but failed
 				writeJSON(w, map[string]any{
@@ -336,6 +338,13 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 			http.Error(w, err.Error(), 500)
 			return
 		}
+
+		// Create a placeholder work session so subsequent clicks detect it
+		// before the launched Claude's SessionStart hook fires.
+		// OpenWorkSession will close any stale sessions and either resume
+		// or create a new one. The "dashboard-launch" session ID is a
+		// placeholder — the real Claude session will replace it on SessionStart.
+		s.OpenWorkSession(id, "dashboard-launch")
 
 		writeJSON(w, map[string]any{
 			"action":      "launched",
