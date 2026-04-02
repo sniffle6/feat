@@ -362,6 +362,39 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 		})
 	})
 
+	// Debug endpoint — hit /api/debug/launch/<id> in the browser to see state
+	mux.HandleFunc("GET /api/debug/launch/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		projDir := devDir
+		if projDir == "" {
+			projDir, _ = os.Getwd()
+		}
+		openSession, openErr := s.GetOpenWorkSessionForFeature(id)
+		cfg := ReadLaunchConfig(projDir)
+		pidPath := filepath.Join(projDir, ".docket", "launch", id+".pid")
+		pidData, pidErr := os.ReadFile(pidPath)
+		alive := isWindowAlive(projDir, id)
+
+		info := map[string]any{
+			"feature_id":      id,
+			"proj_dir":        projDir,
+			"open_session":    openSession != nil,
+			"open_session_err": fmt.Sprintf("%v", openErr),
+			"cfg_launch":      cfg.Launch,
+			"cfg_focus":       cfg.Focus,
+			"pid_file":        string(pidData),
+			"pid_err":         fmt.Sprintf("%v", pidErr),
+			"is_window_alive": alive,
+		}
+		if openSession != nil {
+			info["session_id"] = openSession.ID
+			info["session_state"] = openSession.SessionState
+			info["session_feature"] = openSession.FeatureID
+			info["session_claude_id"] = openSession.ClaudeSessionID
+		}
+		writeJSON(w, info)
+	})
+
 	mux.HandleFunc("GET /api/project", func(w http.ResponseWriter, r *http.Request) {
 		name := "docket"
 		if devDir != "" {
