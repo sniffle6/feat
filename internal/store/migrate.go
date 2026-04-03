@@ -347,6 +347,21 @@ SELECT 'observation', CAST(id AS TEXT), feature_id, 'summary_text', summary_text
 FROM checkpoint_observations WHERE summary_text != '';
 `
 
+// schemaV17 recreates the FTS5 table with UNINDEXED metadata columns.
+// Without UNINDEXED, MATCH queries hit entity_type/entity_id/feature_id/field_name,
+// causing searches for "decision" or "title" to match metadata instead of content.
+const schemaV17 = `
+DROP TABLE IF EXISTS search_index;
+CREATE VIRTUAL TABLE search_index USING fts5(
+	entity_type UNINDEXED,
+	entity_id UNINDEXED,
+	feature_id UNINDEXED,
+	field_name UNINDEXED,
+	content,
+	tokenize='porter unicode61'
+);
+`
+
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec(schemaV1); err != nil {
 		return err
@@ -381,5 +396,55 @@ func migrate(db *sql.DB) error {
 	db.Exec(schemaV15)
 	// v16: add FTS5 search index with triggers and initial population
 	db.Exec(schemaV16)
+	// v17: recreate search_index with UNINDEXED metadata columns
+	db.Exec(schemaV17)
+	// Populate search index if empty (first run or after v17 recreate)
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM search_index").Scan(&count); err == nil && count == 0 {
+		populateSearchIndex(db)
+	}
 	return nil
+}
+
+func populateSearchIndex(db *sql.DB) {
+	populations := []string{
+		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
+		 SELECT 'feature', id, id, 'title', title FROM features WHERE title != ''
+		 UNION ALL SELECT 'feature', id, id, 'description', description FROM features WHERE description != ''
+		 UNION ALL SELECT 'feature', id, id, 'left_off', left_off FROM features WHERE left_off != ''
+		 UNION ALL SELECT 'feature', id, id, 'notes', notes FROM features WHERE notes != ''
+		 UNION ALL SELECT 'feature', id, id, 'key_files', key_files FROM features WHERE key_files != '[]'
+		 UNION ALL SELECT 'feature', id, id, 'tags', tags FROM features WHERE tags != '[]'`,
+
+		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
+		 SELECT 'decision', CAST(id AS TEXT), feature_id, 'approach', approach FROM decisions WHERE approach != ''
+		 UNION ALL SELECT 'decision', CAST(id AS TEXT), feature_id, 'reason', reason FROM decisions WHERE reason != ''`,
+
+		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
+		 SELECT 'issue', CAST(id AS TEXT), feature_id, 'description', description FROM issues WHERE description != ''`,
+
+		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
+		 SELECT 'note', CAST(id AS TEXT), feature_id, 'content', content FROM notes WHERE content != ''`,
+
+		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
+		 SELECT 'session', CAST(id AS TEXT), COALESCE(feature_id, ''), 'summary', summary FROM sessions WHERE summary != ''`,
+
+		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
+		 SELECT 'subtask', CAST(id AS TEXT), feature_id, 'title', title FROM subtasks WHERE title != ''`,
+
+		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
+		 SELECT 'task_item', CAST(ti.id AS TEXT), s.feature_id, 'title', ti.title
+		 FROM task_items ti JOIN subtasks s ON s.id = ti.subtask_id WHERE ti.title != ''`,
+
+		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
+		 SELECT 'task_item', CAST(ti.id AS TEXT), s.feature_id, 'outcome', ti.outcome
+		 FROM task_items ti JOIN subtasks s ON s.id = ti.subtask_id WHERE ti.outcome != ''`,
+
+		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
+		 SELECT 'observation', CAST(id AS TEXT), feature_id, 'summary_text', summary_text
+		 FROM checkpoint_observations WHERE summary_text != ''`,
+	}
+	for _, sql := range populations {
+		db.Exec(sql)
+	}
 }

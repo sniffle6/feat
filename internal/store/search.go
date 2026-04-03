@@ -23,11 +23,27 @@ type SearchResult struct {
 	Rank       float64 `json:"rank"`
 }
 
+// sanitizeQuery quotes queries containing path-like characters that break FTS5
+// bareword parsing (e.g., auth.go, cmd/docket/main.go). Leaves FTS5 syntax
+// (quotes, wildcards, boolean operators) untouched.
+func sanitizeQuery(query string) string {
+	if strings.ContainsAny(query, `"*`) ||
+		strings.Contains(query, " AND ") || strings.Contains(query, " OR ") ||
+		strings.Contains(query, " NOT ") || strings.Contains(query, " NEAR") {
+		return query
+	}
+	if strings.ContainsAny(query, "./\\:") {
+		return `"` + strings.ReplaceAll(query, `"`, `""`) + `"`
+	}
+	return query
+}
+
 // Search queries the FTS5 search index and returns ranked results.
 func (s *Store) Search(query string, opts SearchOpts) ([]SearchResult, error) {
 	if query == "" {
 		return nil, fmt.Errorf("search query cannot be empty")
 	}
+	query = sanitizeQuery(query)
 
 	limit := opts.Limit
 	if limit <= 0 {
@@ -88,49 +104,6 @@ func (s *Store) RebuildSearchIndex() error {
 	if _, err := s.db.Exec("DELETE FROM search_index"); err != nil {
 		return fmt.Errorf("clear search index: %w", err)
 	}
-
-	populations := []string{
-		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
-		 SELECT 'feature', id, id, 'title', title FROM features WHERE title != ''
-		 UNION ALL SELECT 'feature', id, id, 'description', description FROM features WHERE description != ''
-		 UNION ALL SELECT 'feature', id, id, 'left_off', left_off FROM features WHERE left_off != ''
-		 UNION ALL SELECT 'feature', id, id, 'notes', notes FROM features WHERE notes != ''
-		 UNION ALL SELECT 'feature', id, id, 'key_files', key_files FROM features WHERE key_files != '[]'
-		 UNION ALL SELECT 'feature', id, id, 'tags', tags FROM features WHERE tags != '[]'`,
-
-		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
-		 SELECT 'decision', CAST(id AS TEXT), feature_id, 'approach', approach FROM decisions WHERE approach != ''
-		 UNION ALL SELECT 'decision', CAST(id AS TEXT), feature_id, 'reason', reason FROM decisions WHERE reason != ''`,
-
-		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
-		 SELECT 'issue', CAST(id AS TEXT), feature_id, 'description', description FROM issues WHERE description != ''`,
-
-		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
-		 SELECT 'note', CAST(id AS TEXT), feature_id, 'content', content FROM notes WHERE content != ''`,
-
-		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
-		 SELECT 'session', CAST(id AS TEXT), COALESCE(feature_id, ''), 'summary', summary FROM sessions WHERE summary != ''`,
-
-		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
-		 SELECT 'subtask', CAST(id AS TEXT), feature_id, 'title', title FROM subtasks WHERE title != ''`,
-
-		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
-		 SELECT 'task_item', CAST(ti.id AS TEXT), s.feature_id, 'title', ti.title
-		 FROM task_items ti JOIN subtasks s ON s.id = ti.subtask_id WHERE ti.title != ''`,
-
-		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
-		 SELECT 'task_item', CAST(ti.id AS TEXT), s.feature_id, 'outcome', ti.outcome
-		 FROM task_items ti JOIN subtasks s ON s.id = ti.subtask_id WHERE ti.outcome != ''`,
-
-		`INSERT INTO search_index(entity_type, entity_id, feature_id, field_name, content)
-		 SELECT 'observation', CAST(id AS TEXT), feature_id, 'summary_text', summary_text
-		 FROM checkpoint_observations WHERE summary_text != ''`,
-	}
-
-	for _, sql := range populations {
-		if _, err := s.db.Exec(sql); err != nil {
-			return fmt.Errorf("populate search index: %w", err)
-		}
-	}
+	populateSearchIndex(s.db)
 	return nil
 }

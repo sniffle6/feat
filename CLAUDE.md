@@ -58,7 +58,7 @@ Then run `/reload-plugins` (restarts the MCP server with the new binary). Plugin
 - `internal/mcp/tools_search.go` — search MCP tool handler (FTS5 cross-feature search)
 - `internal/store/store.go` — SQLite data layer, Feature/FeatureUpdate structs, completion gate
 - `internal/store/search.go` — FTS5 search query methods (Search, RebuildSearchIndex)
-- `internal/store/migrate.go` — schema migrations (v1-v16)
+- `internal/store/migrate.go` — schema migrations (v1-v17)
 - `internal/store/checkpoint.go` — checkpoint job queue + observation CRUD
 - `internal/store/worksession.go` — work session CRUD (open, close, get active)
 - `internal/store/templates.go` — feature type templates (feature/bugfix/chore/spike)

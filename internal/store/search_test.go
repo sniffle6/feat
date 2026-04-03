@@ -58,6 +58,30 @@ func TestSearchScopeFilter(t *testing.T) {
 	}
 }
 
+func TestSearchPathQuery(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	// Update key_files to include a path
+	s.AddFeature("Path Test", "Testing file path search")
+	kf := `["internal/store/search.go","internal/mcp/tools.go"]`
+	s.UpdateFeature("path-test", FeatureUpdate{KeyFiles: &[]string{"internal/store/search.go", "internal/mcp/tools.go"}})
+
+	_ = kf // key_files stored as JSON by UpdateFeature
+
+	// Path-like query should not error and should find results
+	results, err := s.Search("search.go", SearchOpts{})
+	if err != nil {
+		t.Fatalf("path query should not error: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected results for path query 'search.go'")
+	}
+}
+
 func TestSearchFeatureIDFilter(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
