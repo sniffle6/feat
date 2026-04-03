@@ -18,7 +18,7 @@ func testStore(t *testing.T) *store.Store {
 
 func TestNewServerDoesNotPanic(t *testing.T) {
 	s := testStore(t)
-	srv := NewServer(s, t.TempDir())
+	srv := NewServer(s, t.TempDir(), nil)
 	if srv == nil {
 		t.Fatal("NewServer returned nil")
 	}
@@ -89,7 +89,7 @@ func TestFullWorkflowViaStore(t *testing.T) {
 	}
 
 	// 6. Verify MCP server creation with populated store
-	srv := NewServer(s, t.TempDir())
+	srv := NewServer(s, t.TempDir(), nil)
 	if srv == nil {
 		t.Fatal("NewServer returned nil after workflow")
 	}
@@ -171,5 +171,85 @@ func TestDevCompleteStatusInWorkflow(t *testing.T) {
 	f, _ := s.GetFeature("dev-done-feature")
 	if f.Status != "dev_complete" {
 		t.Errorf("Status = %q, want dev_complete", f.Status)
+	}
+}
+
+func TestDeleteFeature(t *testing.T) {
+	s := testStore(t)
+
+	// Create feature with related data
+	f, err := s.AddFeature("Delete Me", "to be deleted")
+	if err != nil {
+		t.Fatalf("AddFeature: %v", err)
+	}
+
+	// Add subtask with task items
+	st, _ := s.AddSubtask(f.ID, "Phase 1", 1)
+	s.AddTaskItem(st.ID, "Item A", 1)
+	s.AddTaskItem(st.ID, "Item B", 2)
+
+	// Add decision, note, issue
+	s.AddDecision(f.ID, "use REST", "accepted", "simpler")
+	s.AddNote(f.ID, "some note")
+	s.AddIssue(f.ID, "a bug", nil)
+
+	// Add session
+	s.LogSession(store.SessionInput{
+		FeatureID: f.ID,
+		Summary:   "did stuff",
+	})
+
+	// Add work session
+	s.OpenWorkSession(f.ID, "claude-123")
+
+	// Delete
+	err = s.DeleteFeature(f.ID)
+	if err != nil {
+		t.Fatalf("DeleteFeature: %v", err)
+	}
+
+	// Verify feature is gone
+	_, err = s.GetFeature(f.ID)
+	if err == nil {
+		t.Error("expected error getting deleted feature")
+	}
+
+	// Verify subtasks gone
+	subtasks, _ := s.GetSubtasksForFeature(f.ID, true)
+	if len(subtasks) != 0 {
+		t.Errorf("expected 0 subtasks, got %d", len(subtasks))
+	}
+
+	// Verify sessions gone
+	sessions, _ := s.GetSessionsForFeature(f.ID)
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(sessions))
+	}
+
+	// Verify decisions gone
+	decisions, _ := s.GetDecisionsForFeature(f.ID)
+	if len(decisions) != 0 {
+		t.Errorf("expected 0 decisions, got %d", len(decisions))
+	}
+
+	// Verify notes gone
+	notes, _ := s.GetNotesForFeature(f.ID)
+	if len(notes) != 0 {
+		t.Errorf("expected 0 notes, got %d", len(notes))
+	}
+
+	// Verify issues gone
+	issues, _ := s.GetIssuesForFeature(f.ID)
+	if len(issues) != 0 {
+		t.Errorf("expected 0 issues, got %d", len(issues))
+	}
+}
+
+func TestDeleteFeatureNotFound(t *testing.T) {
+	s := testStore(t)
+
+	err := s.DeleteFeature("nonexistent")
+	if err == nil {
+		t.Error("expected error deleting nonexistent feature")
 	}
 }
