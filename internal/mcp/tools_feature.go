@@ -457,6 +457,38 @@ func deleteFeatureHandler(s *store.Store) server.ToolHandlerFunc {
 	}
 }
 
+// computeKeyFileOverlaps finds files that appear in 2+ features' KeyFiles.
+// Returns map[file][]featureID for files with overlaps.
+func computeKeyFileOverlaps(features []store.Feature) map[string][]string {
+	fileToFeatures := make(map[string][]string)
+	for _, f := range features {
+		for _, file := range f.KeyFiles {
+			fileToFeatures[file] = append(fileToFeatures[file], f.ID)
+		}
+	}
+	overlaps := make(map[string][]string)
+	for file, ids := range fileToFeatures {
+		if len(ids) > 1 {
+			overlaps[file] = ids
+		}
+	}
+	return overlaps
+}
+
+// formatOverlapWarning renders an overlap map as a warning string.
+// Returns empty string if no overlaps.
+func formatOverlapWarning(overlaps map[string][]string) string {
+	if len(overlaps) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("⚠ Key file conflicts:\n")
+	for file, ids := range overlaps {
+		fmt.Fprintf(&b, "  %s → %s\n", file, strings.Join(ids, ", "))
+	}
+	return b.String()
+}
+
 func quickTrackHandler(s *store.Store) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args := req.GetArguments()

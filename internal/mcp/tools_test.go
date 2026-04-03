@@ -313,3 +313,81 @@ func TestDeleteFeatureMCPSuccess(t *testing.T) {
 		t.Error("feature should be deleted")
 	}
 }
+
+func TestComputeKeyFileOverlaps_NoOverlap(t *testing.T) {
+	features := []store.Feature{
+		{ID: "feature-a", KeyFiles: []string{"a.go", "b.go"}},
+		{ID: "feature-b", KeyFiles: []string{"c.go", "d.go"}},
+	}
+	overlaps := computeKeyFileOverlaps(features)
+	if len(overlaps) != 0 {
+		t.Errorf("expected no overlaps, got %v", overlaps)
+	}
+}
+
+func TestComputeKeyFileOverlaps_SingleOverlap(t *testing.T) {
+	features := []store.Feature{
+		{ID: "feature-a", KeyFiles: []string{"shared.go", "a.go"}},
+		{ID: "feature-b", KeyFiles: []string{"shared.go", "b.go"}},
+	}
+	overlaps := computeKeyFileOverlaps(features)
+	if len(overlaps) != 1 {
+		t.Fatalf("expected 1 overlap, got %d", len(overlaps))
+	}
+	ids := overlaps["shared.go"]
+	if len(ids) != 2 || ids[0] != "feature-a" || ids[1] != "feature-b" {
+		t.Errorf("unexpected overlap: %v", ids)
+	}
+}
+
+func TestComputeKeyFileOverlaps_MultipleOverlaps(t *testing.T) {
+	features := []store.Feature{
+		{ID: "feature-a", KeyFiles: []string{"shared.go", "also.go"}},
+		{ID: "feature-b", KeyFiles: []string{"shared.go", "also.go"}},
+		{ID: "feature-c", KeyFiles: []string{"shared.go", "unique.go"}},
+	}
+	overlaps := computeKeyFileOverlaps(features)
+	if len(overlaps) != 2 {
+		t.Fatalf("expected 2 overlaps, got %d: %v", len(overlaps), overlaps)
+	}
+	if len(overlaps["shared.go"]) != 3 {
+		t.Errorf("shared.go should have 3 features, got %v", overlaps["shared.go"])
+	}
+	if len(overlaps["also.go"]) != 2 {
+		t.Errorf("also.go should have 2 features, got %v", overlaps["also.go"])
+	}
+}
+
+func TestComputeKeyFileOverlaps_EmptyKeyFiles(t *testing.T) {
+	features := []store.Feature{
+		{ID: "feature-a", KeyFiles: []string{}},
+		{ID: "feature-b", KeyFiles: []string{"a.go"}},
+	}
+	overlaps := computeKeyFileOverlaps(features)
+	if len(overlaps) != 0 {
+		t.Errorf("expected no overlaps, got %v", overlaps)
+	}
+}
+
+func TestFormatOverlapWarning_Empty(t *testing.T) {
+	result := formatOverlapWarning(nil)
+	if result != "" {
+		t.Errorf("expected empty string, got %q", result)
+	}
+}
+
+func TestFormatOverlapWarning_WithOverlaps(t *testing.T) {
+	overlaps := map[string][]string{
+		"store.go": {"feature-a", "feature-b"},
+	}
+	result := formatOverlapWarning(overlaps)
+	if !strings.Contains(result, "Key file conflicts") {
+		t.Errorf("expected warning header, got %q", result)
+	}
+	if !strings.Contains(result, "store.go") {
+		t.Errorf("expected file name in output, got %q", result)
+	}
+	if !strings.Contains(result, "feature-a") || !strings.Contains(result, "feature-b") {
+		t.Errorf("expected feature IDs in output, got %q", result)
+	}
+}
