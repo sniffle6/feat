@@ -417,6 +417,21 @@ func getReadyHandler(s *store.Store) server.ToolHandlerFunc {
 			}
 			lines = append(lines, line)
 		}
+
+		// Check key file overlaps among in_progress features only
+		var inProgress []store.Feature
+		for _, f := range features {
+			if f.Status == "in_progress" {
+				inProgress = append(inProgress, f)
+			}
+		}
+		if len(inProgress) > 1 {
+			overlaps := computeKeyFileOverlaps(inProgress)
+			if warning := formatOverlapWarning(overlaps); warning != "" {
+				lines = append(lines, "\n"+warning)
+			}
+		}
+
 		return mcp.NewToolResultText(strings.Join(lines, "\n")), nil
 	}
 }

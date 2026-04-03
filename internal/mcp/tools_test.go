@@ -452,3 +452,59 @@ func TestGetContextHandler_NoOverlapWarning(t *testing.T) {
 		t.Errorf("expected no overlap warning, got:\n%s", text)
 	}
 }
+
+func TestGetReadyHandler_OverlapWarning(t *testing.T) {
+	s := testStore(t)
+
+	s.AddFeature("Feature A", "")
+	s.UpdateFeature("feature-a", store.FeatureUpdate{
+		Status:   strPtr("in_progress"),
+		KeyFiles: &[]string{"shared.go", "a.go"},
+	})
+	s.AddFeature("Feature B", "")
+	s.UpdateFeature("feature-b", store.FeatureUpdate{
+		Status:   strPtr("in_progress"),
+		KeyFiles: &[]string{"shared.go", "b.go"},
+	})
+
+	handler := getReadyHandler(s)
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{}
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "Key file conflicts") {
+		t.Errorf("expected overlap warning, got:\n%s", text)
+	}
+	if !strings.Contains(text, "shared.go") {
+		t.Errorf("expected shared file in warning, got:\n%s", text)
+	}
+}
+
+func TestGetReadyHandler_NoOverlapPlannedFeatures(t *testing.T) {
+	s := testStore(t)
+
+	// Two planned features sharing a file — should NOT trigger warning
+	s.AddFeature("Feature A", "")
+	s.UpdateFeature("feature-a", store.FeatureUpdate{
+		KeyFiles: &[]string{"shared.go"},
+	})
+	s.AddFeature("Feature B", "")
+	s.UpdateFeature("feature-b", store.FeatureUpdate{
+		KeyFiles: &[]string{"shared.go"},
+	})
+
+	handler := getReadyHandler(s)
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{}
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if strings.Contains(text, "Key file conflicts") {
+		t.Errorf("expected no overlap warning for planned features, got:\n%s", text)
+	}
+}
