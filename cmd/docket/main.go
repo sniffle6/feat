@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -82,21 +83,43 @@ func runServe() {
 	}
 	defer s.Close()
 
-	// Start HTTP dashboard in background on a per-project port
+	// Dashboard leader election — try to bind port, fall back to standby polling
 	port := portForDir(dir)
+	portStr := fmt.Sprintf("%d", port)
 
-	// Write port file so skills/tools can discover the dashboard URL
+	// Write port file (all instances write the same deterministic port)
 	portFile := filepath.Join(dir, ".docket", "port")
-	os.WriteFile(portFile, []byte(fmt.Sprintf("%d", port)), 0644)
+	os.WriteFile(portFile, []byte(portStr), 0644)
 
-	go func() {
-		handler := dashboard.NewHandler(s, staticfiles.StaticFS, dir)
-		addr := fmt.Sprintf(":%d", port)
-		log.Printf("Dashboard: http://localhost:%d", port)
-		if err := http.ListenAndServe(addr, handler); err != nil {
-			log.Printf("dashboard error: %v", err)
+	handler := dashboard.NewHandler(s, staticfiles.StaticFS, dir)
+
+	tryServeDashboard := func() bool {
+		ln, err := net.Listen("tcp", ":"+portStr)
+		if err != nil {
+			return false // port taken — another instance is the leader
 		}
-	}()
+		go func() {
+			log.Printf("Dashboard: http://localhost:%s", portStr)
+			if err := http.Serve(ln, handler); err != nil {
+				log.Printf("dashboard serve error: %v", err)
+			}
+		}()
+		return true
+	}
+
+	// Try to become leader immediately
+	if !tryServeDashboard() {
+		// Standby — probe every 3 seconds
+		go func() {
+			ticker := time.NewTicker(3 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				if tryServeDashboard() {
+					return
+				}
+			}
+		}()
+	}
 
 	// Start checkpoint worker in background
 	cfg := checkpoint.LoadConfig()

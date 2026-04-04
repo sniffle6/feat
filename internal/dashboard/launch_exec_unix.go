@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"syscall"
 )
 
 // isWindowAlive is a no-op on Unix — focus commands fail cleanly on their own
@@ -16,11 +17,20 @@ func isWindowAlive(_, _ string) bool {
 	return true // assume alive, let focus command determine liveness
 }
 
+// isPIDRunning checks if a process with the given PID is still running.
+func isPIDRunning(pid int64) bool {
+	p, err := os.FindProcess(int(pid))
+	if err != nil {
+		return false
+	}
+	return p.Signal(syscall.Signal(0)) == nil
+}
+
 // launchInTerminal opens a new terminal window running claude for the given feature.
 func launchInTerminal(projDir, promptPath, featureTitle, featureID, launchDir string) error {
 	// Write a shell launcher script
-	script := fmt.Sprintf("#!/bin/sh\ncd %q\nclaude --dangerously-skip-permissions --append-system-prompt-file %q \"Resume work on: %s (feature_id: %s). Check get_ready for current status.\"\n",
-		projDir, promptPath, featureTitle, featureID)
+	script := fmt.Sprintf("#!/bin/sh\nexport DOCKET_LAUNCH_FEATURE=%s\ncd %q\nclaude --dangerously-skip-permissions --append-system-prompt-file %q \"Resume work on: %s (feature_id: %s). Check get_ready for current status.\"\n",
+		featureID, projDir, promptPath, featureTitle, featureID)
 	scriptPath := filepath.Join(launchDir, featureID+".sh")
 	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
 		return fmt.Errorf("failed to write launch script: %w", err)

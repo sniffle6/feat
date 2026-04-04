@@ -35,14 +35,24 @@ func isWindowAlive(projDir, featureID string) bool {
 	return cmd.Run() == nil
 }
 
+// isPIDRunning checks if a process with the given PID is still running.
+func isPIDRunning(pid int64) bool {
+	cmd := exec.Command("cmd")
+	pidStr := fmt.Sprintf("%d", pid)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CmdLine: fmt.Sprintf(`cmd /C tasklist /FI "PID eq %s" /NH 2>nul | findstr /C:"%s" >nul`, pidStr, pidStr),
+	}
+	return cmd.Run() == nil
+}
+
 // launchInTerminal opens a new terminal window running claude for the given feature.
 func launchInTerminal(projDir, promptPath, featureTitle, featureID, launchDir string) error {
 	// Write a .cmd launcher script. Writes the cmd.exe PID to a .pid file so
 	// isWindowAlive can check if the terminal is still running.
 	// PowerShell's $PID parent is the cmd.exe running this script.
 	pidPath := filepath.Join(launchDir, featureID+".pid")
-	cmdScript := fmt.Sprintf("@echo off\r\ntitle docket-%s\r\npowershell -NoProfile -Command \"(Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID)).ParentProcessId | Out-File -Encoding ascii -NoNewline '%s'\"\r\ncd /d \"%s\"\r\nclaude --dangerously-skip-permissions --append-system-prompt-file \"%s\" \"Resume work on: %s (feature_id: %s). Check get_ready for current status.\"\r\ndel \"%s\" 2>nul\r\n",
-		featureID, pidPath, projDir, promptPath, featureTitle, featureID, pidPath)
+	cmdScript := fmt.Sprintf("@echo off\r\nset DOCKET_LAUNCH_FEATURE=%s\r\ntitle docket-%s\r\npowershell -NoProfile -Command \"(Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID)).ParentProcessId | Out-File -Encoding ascii -NoNewline '%s'\"\r\ncd /d \"%s\"\r\nclaude --dangerously-skip-permissions --append-system-prompt-file \"%s\" \"Resume work on: %s (feature_id: %s). Check get_ready for current status.\"\r\ndel \"%s\" 2>nul\r\n",
+		featureID, featureID, pidPath, projDir, promptPath, featureTitle, featureID, pidPath)
 	cmdPath := filepath.Join(launchDir, featureID+".cmd")
 	if err := os.WriteFile(cmdPath, []byte(cmdScript), 0644); err != nil {
 		return fmt.Errorf("failed to write launch script: %w", err)
