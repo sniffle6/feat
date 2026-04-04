@@ -34,16 +34,19 @@ fi
 
 # --- Step 1: Build binary ---
 
+VERSION=$(grep '"version"' plugin/.claude-plugin/plugin.json | sed 's/.*: *"\(.*\)".*/\1/')
+[ -n "$VERSION" ] || { echo "ERROR: could not extract version from plugin.json"; exit 1; }
+
 if [ "$DEV_MODE" = true ]; then
     echo "Building docket into plugin/docket.exe..."
     cd "$SOURCE_DIR"
-    go build -ldflags="-s -w" -o plugin/docket.exe ./cmd/docket/
+    go build -ldflags="-s -w -X main.version=$VERSION" -o plugin/docket.exe ./cmd/docket/
     echo "Built: $PLUGIN_SOURCE/docket.exe"
     ./plugin/docket.exe version
 else
     echo "Building docket..."
     cd "$SOURCE_DIR"
-    go build -ldflags="-s -w" -o docket.exe ./cmd/docket/
+    go build -ldflags="-s -w -X main.version=$VERSION" -o docket.exe ./cmd/docket/
     echo "Built: $SOURCE_DIR/docket.exe"
     ./docket.exe version
 fi
@@ -123,20 +126,20 @@ if [ -f "$PLUGINS_FILE" ]; then
         echo "docket@local already in installed_plugins.json — skipping"
     elif command -v jq &> /dev/null; then
         tmp=$(mktemp)
-        jq --arg path "$INSTALL_PATH_JSON" --arg ts "$TIMESTAMP" \
-            '.plugins["docket@local"] = [{"scope": "user", "installPath": $path, "version": "0.1.0", "installedAt": $ts, "lastUpdated": $ts}]' \
+        jq --arg path "$INSTALL_PATH_JSON" --arg ts "$TIMESTAMP" --arg ver "$VERSION" \
+            '.plugins["docket@local"] = [{"scope": "user", "installPath": $path, "version": $ver, "installedAt": $ts, "lastUpdated": $ts}]' \
             "$PLUGINS_FILE" > "$tmp" && mv "$tmp" "$PLUGINS_FILE"
         echo "Added docket@local to installed_plugins.json (via jq)"
     elif command -v python3 &> /dev/null; then
         python3 -c "
 import json, sys
-path, ts, pf = sys.argv[1], sys.argv[2], sys.argv[3]
+path, ts, pf, ver = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 with open(pf, 'r') as f:
     data = json.load(f)
-data['plugins']['docket@local'] = [{'scope': 'user', 'installPath': path, 'version': '0.1.0', 'installedAt': ts, 'lastUpdated': ts}]
+data['plugins']['docket@local'] = [{'scope': 'user', 'installPath': path, 'version': ver, 'installedAt': ts, 'lastUpdated': ts}]
 with open(pf, 'w') as f:
     json.dump(data, f, indent=2)
-" "$INSTALL_PATH_JSON" "$TIMESTAMP" "$PLUGINS_FILE"
+" "$INSTALL_PATH_JSON" "$TIMESTAMP" "$PLUGINS_FILE" "$VERSION"
         echo "Added docket@local to installed_plugins.json (via python3)"
     else
         echo "WARNING: Neither jq nor python3 found. Register plugin manually in $PLUGINS_FILE"

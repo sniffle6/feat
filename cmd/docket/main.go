@@ -22,6 +22,8 @@ import (
 	"github.com/sniffle6/claude-docket/internal/store"
 )
 
+var version = "dev"
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: docket <command>")
@@ -31,7 +33,7 @@ func main() {
 
 	switch os.Args[1] {
 	case "version":
-		fmt.Println("docket v0.1.0")
+		fmt.Printf("docket v%s\n", version)
 	case "init":
 		runInit()
 	case "hook":
@@ -139,7 +141,7 @@ func runServe() {
 	go worker.Run(ctx, 500*time.Millisecond)
 
 	// Run MCP server on stdio (blocks)
-	mcpServer := docketmcp.NewServer(s, dir, worker.Notify)
+	mcpServer := docketmcp.NewServer(s, dir, version, worker.Notify)
 	if err := server.ServeStdio(mcpServer); err != nil {
 		log.Fatalf("mcp server: %v", err)
 	}

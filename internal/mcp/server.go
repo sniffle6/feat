@@ -42,8 +42,8 @@ func (b *Binding) Clear() {
 	b.Bound = false
 }
 
-func NewServer(s *store.Store, projectDir string, onCheckpoint func()) *server.MCPServer {
-	srv := server.NewMCPServer("docket", "0.1.0",
+func NewServer(s *store.Store, projectDir string, version string, onCheckpoint func()) *server.MCPServer {
+	srv := server.NewMCPServer("docket", version,
 		server.WithToolCapabilities(true),
 	)
 

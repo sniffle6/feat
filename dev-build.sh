@@ -9,7 +9,9 @@ PLUGIN_INSTALL="$HOME/.claude/plugins/marketplaces/local/docket"
 
 echo "Building docket..."
 cd "$SOURCE_DIR"
-go build -ldflags="-s -w" -o plugin/docket.exe ./cmd/docket/
+VERSION=$(grep '"version"' plugin/.claude-plugin/plugin.json | sed 's/.*: *"\(.*\)".*/\1/')
+[ -n "$VERSION" ] || { echo "ERROR: could not extract version from plugin.json"; exit 1; }
+go build -ldflags="-s -w -X main.version=$VERSION" -o plugin/docket.exe ./cmd/docket/
 echo "Done. $(./plugin/docket.exe version)"
 
 # Kill running docket MCP server so Claude Code restarts it with the new binary

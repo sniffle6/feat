@@ -21,7 +21,7 @@ func testStore(t *testing.T) *store.Store {
 
 func TestNewServerDoesNotPanic(t *testing.T) {
 	s := testStore(t)
-	srv := NewServer(s, t.TempDir(), nil)
+	srv := NewServer(s, t.TempDir(), "test", nil)
 	if srv == nil {
 		t.Fatal("NewServer returned nil")
 	}
@@ -92,7 +92,7 @@ func TestFullWorkflowViaStore(t *testing.T) {
 	}
 
 	// 6. Verify MCP server creation with populated store
-	srv := NewServer(s, t.TempDir(), nil)
+	srv := NewServer(s, t.TempDir(), "test", nil)
 	if srv == nil {
 		t.Fatal("NewServer returned nil after workflow")
 	}
