@@ -337,6 +337,104 @@ func TestOpenWorkSessionSupersedes(t *testing.T) {
 	}
 }
 
+func TestBindSessionReopenAfterEndSession(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+	s.AddFeature("Feature B", "")
+
+	// Open session on feat-a
+	ws1, _ := s.OpenWorkSession("feature-a", "session-1")
+	pid := int64(99999)
+	s.SetMcpPid(ws1.ID, &pid)
+
+	// Simulate end_session: close and clear mcp_pid
+	s.SetMcpPid(ws1.ID, nil)
+	s.CloseWorkSession(ws1.ID)
+
+	// Rebind to feat-b (same claude session)
+	ws2, err := s.OpenWorkSession("feature-b", "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws2.FeatureID != "feature-b" {
+		t.Errorf("expected feature-b, got %q", ws2.FeatureID)
+	}
+	if ws2.Status != "open" {
+		t.Errorf("expected open, got %q", ws2.Status)
+	}
+
+	// Original session should still be closed
+	reloaded, _ := s.GetWorkSession(ws1.ID)
+	if reloaded.Status != "closed" {
+		t.Errorf("original session should be closed, got %q", reloaded.Status)
+	}
+}
+
+func TestZombieSessionReclaim(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+
+	// Create a zombie: open session, no mcp_pid, stale heartbeat
+	ws, _ := s.OpenWorkSession("feature-a", "old-session")
+	// Manually set heartbeat to 25 hours ago
+	s.ExecRaw(`UPDATE work_sessions SET last_heartbeat = datetime('now', '-25 hours') WHERE id = ?`, ws.ID)
+
+	// Reload to verify stale heartbeat
+	reloaded, _ := s.GetWorkSession(ws.ID)
+	if reloaded.McpPid != nil {
+		t.Fatal("expected nil McpPid for zombie")
+	}
+
+	// New session supersedes the zombie (same feature)
+	ws2, err := s.OpenWorkSession("feature-a", "new-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws2.ClaudeSessionID != "new-session" {
+		t.Errorf("expected new-session, got %q", ws2.ClaudeSessionID)
+	}
+
+	// Zombie should be closed
+	reloaded, _ = s.GetWorkSession(ws.ID)
+	if reloaded.Status != "closed" {
+		t.Errorf("zombie should be closed, got %q", reloaded.Status)
+	}
+}
+
+func TestManualSessionSkipsPlaceholder(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+	s.AddFeature("Feature B", "")
+
+	// Create placeholder for feat-a (dashboard launch pending)
+	s.CreatePlaceholderSession("feature-a")
+
+	// Verify feat-a has an open session, feat-b doesn't
+	openA, _ := s.GetOpenWorkSessionForFeature("feature-a")
+	if openA == nil {
+		t.Fatal("expected placeholder session for feature-a")
+	}
+	openB, _ := s.GetOpenWorkSessionForFeature("feature-b")
+	if openB != nil {
+		t.Fatal("expected no session for feature-b")
+	}
+
+	// Open manual session on feat-b (the first unoccupied feature)
+	ws, err := s.OpenWorkSession("feature-b", "manual-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws.FeatureID != "feature-b" {
+		t.Errorf("expected feature-b, got %q", ws.FeatureID)
+	}
+
+	// Placeholder should still be intact
+	openA, _ = s.GetOpenWorkSessionForFeature("feature-a")
+	if openA == nil || openA.ClaudeSessionID != "dashboard-launch" {
+		t.Error("placeholder for feature-a should still exist")
+	}
+}
+
 func TestSetMcpPid(t *testing.T) {
 	s := openTestStore(t)
 	s.AddFeature("Feature A", "")

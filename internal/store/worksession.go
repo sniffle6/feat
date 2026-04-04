@@ -227,6 +227,11 @@ func scanWorkSession(row scannable) (*WorkSession, error) {
 	return &ws, nil
 }
 
+// ExecRaw executes raw SQL on the store (test helper).
+func (s *Store) ExecRaw(query string, args ...any) {
+	s.db.Exec(query, args...)
+}
+
 // SetMcpPid sets or clears the mcp_pid for a work session.
 func (s *Store) SetMcpPid(id int64, pid *int64) error {
 	_, err := s.db.Exec(
