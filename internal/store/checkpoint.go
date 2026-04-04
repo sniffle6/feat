@@ -119,31 +119,24 @@ func (s *Store) EnqueueCheckpointJob(input CheckpointJobInput) (*CheckpointJob, 
 
 // DequeueCheckpointJob atomically picks the oldest queued job and marks it running.
 func (s *Store) DequeueCheckpointJob() (*CheckpointJob, error) {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	row := tx.QueryRow(
-		`SELECT id FROM checkpoint_jobs WHERE status = 'queued' ORDER BY id ASC LIMIT 1`,
+	row := s.db.QueryRow(
+		`UPDATE checkpoint_jobs
+		 SET status = 'running', started_at = datetime('now')
+		 WHERE id = (
+		     SELECT id FROM checkpoint_jobs
+		     WHERE status = 'queued'
+		     ORDER BY id ASC LIMIT 1
+		 )
+		 RETURNING id, work_session_id, feature_id, reason, trigger_type,
+		           transcript_start_offset, transcript_end_offset,
+		           semantic_text, mechanical_json, status, error,
+		           retry_count, created_at, started_at, finished_at`,
 	)
-	var id int64
-	if err := row.Scan(&id); err != nil {
+	job, err := scanCheckpointJob(row)
+	if err != nil {
 		return nil, nil // no queued jobs
 	}
-
-	_, err = tx.Exec(
-		`UPDATE checkpoint_jobs SET status = 'running', started_at = datetime('now') WHERE id = ?`, id,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return s.GetCheckpointJob(id)
+	return job, nil
 }
 
 func (s *Store) CompleteCheckpointJob(id int64, errMsg *string) error {
@@ -180,14 +173,7 @@ func (s *Store) FailCheckpointJob(id int64, errMsg string) error {
 	return err
 }
 
-func (s *Store) GetCheckpointJob(id int64) (*CheckpointJob, error) {
-	row := s.db.QueryRow(
-		`SELECT id, work_session_id, feature_id, reason, trigger_type,
-                transcript_start_offset, transcript_end_offset,
-                semantic_text, mechanical_json, status, error, retry_count,
-                created_at, started_at, finished_at
-         FROM checkpoint_jobs WHERE id = ?`, id,
-	)
+func scanCheckpointJob(row scannable) (*CheckpointJob, error) {
 	var job CheckpointJob
 	err := row.Scan(
 		&job.ID, &job.WorkSessionID, &job.FeatureID, &job.Reason, &job.TriggerType,
@@ -196,9 +182,24 @@ func (s *Store) GetCheckpointJob(id int64) (*CheckpointJob, error) {
 		&job.CreatedAt, &job.StartedAt, &job.FinishedAt,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("get checkpoint job %d: %w", id, err)
+		return nil, err
 	}
 	return &job, nil
+}
+
+func (s *Store) GetCheckpointJob(id int64) (*CheckpointJob, error) {
+	row := s.db.QueryRow(
+		`SELECT id, work_session_id, feature_id, reason, trigger_type,
+                transcript_start_offset, transcript_end_offset,
+                semantic_text, mechanical_json, status, error, retry_count,
+                created_at, started_at, finished_at
+         FROM checkpoint_jobs WHERE id = ?`, id,
+	)
+	job, err := scanCheckpointJob(row)
+	if err != nil {
+		return nil, fmt.Errorf("get checkpoint job %d: %w", id, err)
+	}
+	return job, nil
 }
 
 func (s *Store) AddCheckpointObservation(input CheckpointObservationInput) (*CheckpointObservation, error) {

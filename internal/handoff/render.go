@@ -27,6 +27,16 @@ func Render(data *store.HandoffData, cpData *CheckpointData) string {
 	fmt.Fprintf(&b, "%s | Progress: %d/%d | Updated: %s\n\n",
 		f.Status, data.Done, data.Total, f.UpdatedAt.Format("2006-01-02 15:04"))
 
+	if f.SpecPath != "" {
+		fmt.Fprintf(&b, "Spec: %s\n", f.SpecPath)
+	}
+	if f.PlanPath != "" {
+		fmt.Fprintf(&b, "Plan: %s\n", f.PlanPath)
+	}
+	if f.SpecPath != "" || f.PlanPath != "" {
+		b.WriteString("\n")
+	}
+
 	if f.LeftOff != "" {
 		fmt.Fprintf(&b, "## Left Off\n%s\n\n", f.LeftOff)
 	}

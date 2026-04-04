@@ -33,7 +33,7 @@ This builds the binary, symlinks the plugin directory (so plugin file edits are 
 1. Builds `plugin/docket.exe` via `go build`
 2. Kills any running `docket.exe` process (the MCP server)
 3. Copies the binary to `~/.claude/plugins/marketplaces/local/docket/docket.exe`
-4. Deletes the plugin cache at `~/.claude/plugins/cache/local/docket` (forces re-cache on next reload)
+4. **Only if deploy succeeded:** deletes the plugin cache at `~/.claude/plugins/cache/local/docket` (forces re-cache on next reload). If the plugin dir doesn't exist (deploy skipped), the cache is left alone to avoid breaking a working install.
 5. Prints "Run /reload-plugins to restart the MCP server."
 
 After running, do `/reload-plugins` in Claude Code — this restarts the MCP server with the new binary.
@@ -51,6 +51,7 @@ bash install.sh
 - **Cache invalidation.** Claude Code loads plugins from its cache, not the marketplace directory. `dev-build.sh` deletes the cache so Claude Code re-caches from marketplace on next reload. If the cache isn't deleted, the old binary keeps running.
 - **`plugin/docket.exe` is gitignored.** Don't commit it.
 - **Hooks and MCP share the same binary.** A broken build will break both hooks and the MCP server.
+- **Legacy cleanup ordering (install.sh).** Step 5 kills running docket, removes the old `.mcp.json` entry, then deletes the old binary dir — in that order. The `.mcp.json` cleanup comes first so a mid-run abort doesn't leave stale config pointing at a deleted path. The `rm -rf` is best-effort to handle Windows file locks without aborting.
 
 ## Key files
 

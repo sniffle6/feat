@@ -9,7 +9,7 @@ import (
 	"github.com/sniffle6/claude-docket/internal/store"
 )
 
-func registerTools(srv *server.MCPServer, s *store.Store, projectDir string, onCheckpoint func()) {
+func registerTools(srv *server.MCPServer, s *store.Store, projectDir string, onCheckpoint func(), binding *Binding, launchFeature string) {
 	srv.AddTool(mcp.NewTool("add_feature",
 		mcp.WithDescription("Create a new feature to track. Returns the generated slug ID."),
 		mcp.WithString("title", mcp.Required(), mcp.Description("Feature title (e.g., 'Bluetooth Panel')")),
@@ -144,7 +144,13 @@ func registerTools(srv *server.MCPServer, s *store.Store, projectDir string, onC
 	srv.AddTool(mcp.NewTool("checkpoint",
 		mcp.WithDescription("Force a checkpoint of the current session's semantic and mechanical state. Enqueues a background summarization job. Pass end_session=true to also close the work session and write the handoff file."),
 		mcp.WithBoolean("end_session", mcp.Description("If true, close the work session and write handoff after checkpointing. Default: false.")),
-	), checkpointHandler(s, projectDir, onCheckpoint))
+	), checkpointHandler(s, projectDir, onCheckpoint, binding))
+
+	srv.AddTool(mcp.NewTool("bind_session",
+		mcp.WithDescription("Bind this MCP server to a specific work session. Call at session start with the session_id and feature_id from the system message. Required before checkpoint can work. Safe to call multiple times — idempotent if already bound."),
+		mcp.WithString("feature_id", mcp.Required(), mcp.Description("Feature slug ID to bind to")),
+		mcp.WithString("session_id", mcp.Required(), mcp.Description("Claude session ID from the session context system message")),
+	), bindSessionHandler(s, binding, launchFeature))
 
 	srv.AddTool(mcp.NewTool("search",
 		mcp.WithDescription("Search across all feature content: descriptions, decisions, issues, notes, sessions, tasks, and checkpoint observations. Supports FTS5 syntax: plain words, \"phrase match\", prefix*, AND/OR operators."),

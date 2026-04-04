@@ -125,7 +125,7 @@ This project uses `docket` for feature tracking. Dashboard: http://localhost:<po
 
 **Small tasks**: call `quick_track` — one call, no agent dispatch needed.
 
-**Larger features**: call `get_ready`, then dispatch `board-manager` agent (model: sonnet) to create or find a card. Use `type` (feature/bugfix/chore/spike) for auto-generated subtask templates. Always pass `tags` when calling `add_feature` — use existing tags from `list_features`.
+**Larger features**: call `get_ready`, then dispatch `board-manager` agent (model: sonnet) to create or find a card. Call `bind_session(feature_id, session_id)` to bind the session (session ID is in the session context message). Use `type` (feature/bugfix/chore/spike) for auto-generated subtask templates. Always pass `tags` when calling `add_feature` — use existing tags from `list_features`.
 
 **Plan execution (superpowers):** When using executing-plans or subagent-driven-development, set up docket first — `get_ready`, create/find a card, `add_task_item` per plan task.
 

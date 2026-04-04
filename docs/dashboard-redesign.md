@@ -55,8 +55,9 @@ Clicking a card opens a panel that slides in from the right, covering ~60% of th
 
 ### Panel sections, top to bottom:
 
-1. **Header** — Feature title (large), slug ID + status badge
-2. **Description** — If present
+1. **Header** — Feature title (large), slug ID + status badge + type badge
+2. **Tags** — Editable tag pills with remove buttons + input with autocomplete from known tags. Saves inline via PATCH.
+3. **Description** — If present
 3. **Left Off** — Callout block with teal left border. Non-editable. Shows Claude's last session context.
 4. **Your Notes** — Editable textarea with save button. Placeholder: "Add notes, thoughts, or ideas for Claude..."
 5. **Tasks** — Each task (subtask in schema) is a collapsible section:
@@ -92,7 +93,8 @@ Add `Notes string` to `Feature` and `FeatureUpdate` in `store.go`. Include in al
 
 - `GET /api/features` — includes `notes`, `subtask_progress` array (title/done/total per subtask)
 - `GET /api/features/{id}` — includes `notes` via Feature struct
-- `PATCH /api/features/{id}` — accepts `notes` in body (dashboard save button uses this)
+- `PATCH /api/features/{id}` — accepts `notes` and `tags` in body (dashboard save button / tag editor uses this)
+- `GET /api/tags` — returns all known tags across features (for autocomplete)
 
 ## Theme: Memphis Noir
 

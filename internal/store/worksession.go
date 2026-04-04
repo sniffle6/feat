@@ -15,6 +15,7 @@ type WorkSession struct {
 	EndedAt         *time.Time `json:"ended_at"`
 	HandoffStale    bool       `json:"handoff_stale"`
 	LastHeartbeat   *time.Time `json:"last_heartbeat"`
+	McpPid          *int64     `json:"mcp_pid"`
 }
 
 // OpenWorkSession opens a new work session or resumes an existing open one
@@ -22,7 +23,7 @@ type WorkSession struct {
 func (s *Store) OpenWorkSession(featureID, claudeSessionID string) (*WorkSession, error) {
 	// Try to resume existing open session for same feature+claude session
 	row := s.db.QueryRow(
-		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat, mcp_pid
          FROM work_sessions WHERE feature_id = ? AND claude_session_id = ? AND status = 'open'`,
 		featureID, claudeSessionID,
 	)
@@ -31,8 +32,26 @@ func (s *Store) OpenWorkSession(featureID, claudeSessionID string) (*WorkSession
 		return ws, nil
 	}
 
-	// Close any other open sessions (one active session at a time)
-	s.db.Exec(`UPDATE work_sessions SET status = 'closed', ended_at = datetime('now') WHERE status = 'open'`)
+	// Check for placeholder session (from dashboard launch) to upgrade
+	var placeholderID int64
+	phErr := s.db.QueryRow(
+		`SELECT id FROM work_sessions WHERE feature_id = ? AND claude_session_id = 'dashboard-launch' AND status = 'open'`,
+		featureID,
+	).Scan(&placeholderID)
+	if phErr == nil {
+		// Upgrade placeholder to real session
+		now := time.Now().UTC()
+		if _, err := s.db.Exec(
+			`UPDATE work_sessions SET claude_session_id = ?, last_heartbeat = ? WHERE id = ?`,
+			claudeSessionID, now, placeholderID,
+		); err != nil {
+			return nil, fmt.Errorf("upgrade placeholder session: %w", err)
+		}
+		return s.GetWorkSession(placeholderID)
+	}
+
+	// Close any other open sessions for the same feature (feature-scoped)
+	s.db.Exec(`UPDATE work_sessions SET status = 'closed', ended_at = datetime('now') WHERE feature_id = ? AND status = 'open'`, featureID)
 
 	now := time.Now().UTC()
 	res, err := s.db.Exec(
@@ -58,7 +77,7 @@ func (s *Store) CreatePlaceholderSession(featureID string) error {
 	}
 	now := time.Now().UTC()
 	_, err := s.db.Exec(
-		`INSERT INTO work_sessions (feature_id, claude_session_id, status, started_at, last_heartbeat) VALUES (?, ?, 'open', ?, ?)`,
+		`INSERT INTO work_sessions (feature_id, claude_session_id, status, session_state, started_at, last_heartbeat) VALUES (?, ?, 'open', 'launching', ?, ?)`,
 		featureID, "dashboard-launch", now, now,
 	)
 	return err
@@ -66,7 +85,7 @@ func (s *Store) CreatePlaceholderSession(featureID string) error {
 
 func (s *Store) GetWorkSession(id int64) (*WorkSession, error) {
 	row := s.db.QueryRow(
-		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat, mcp_pid
          FROM work_sessions WHERE id = ?`, id,
 	)
 	return scanWorkSession(row)
@@ -75,8 +94,21 @@ func (s *Store) GetWorkSession(id int64) (*WorkSession, error) {
 // GetActiveWorkSession returns the single open work session, or error if none.
 func (s *Store) GetActiveWorkSession() (*WorkSession, error) {
 	row := s.db.QueryRow(
-		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat, mcp_pid
          FROM work_sessions WHERE status = 'open' ORDER BY id DESC LIMIT 1`,
+	)
+	return scanWorkSession(row)
+}
+
+// GetWorkSessionByClaudeSession returns the open work session for a specific
+// Claude session ID. Returns an error if no matching session exists — callers
+// should treat this as "no session for this Claude instance" and skip session
+// state changes rather than grabbing an unrelated session.
+func (s *Store) GetWorkSessionByClaudeSession(claudeSessionID string) (*WorkSession, error) {
+	row := s.db.QueryRow(
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat, mcp_pid
+         FROM work_sessions WHERE claude_session_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1`,
+		claudeSessionID,
 	)
 	return scanWorkSession(row)
 }
@@ -84,7 +116,7 @@ func (s *Store) GetActiveWorkSession() (*WorkSession, error) {
 // GetOpenWorkSessionForFeature returns the open work session for a feature, or nil if none.
 func (s *Store) GetOpenWorkSessionForFeature(featureID string) (*WorkSession, error) {
 	row := s.db.QueryRow(
-		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat, mcp_pid
          FROM work_sessions WHERE feature_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1`,
 		featureID,
 	)
@@ -110,7 +142,7 @@ func (s *Store) MarkHandoffStale(id int64) {
 // Returns an error if the session is not open.
 func (s *Store) SetSessionState(id int64, state string) error {
 	switch state {
-	case "idle", "working", "needs_attention":
+	case "idle", "working", "needs_attention", "subagent":
 	default:
 		return fmt.Errorf("invalid session state: %q", state)
 	}
@@ -187,10 +219,23 @@ func (s *Store) CloseWorkSessionByFeature(featureID string) (int64, error) {
 func scanWorkSession(row scannable) (*WorkSession, error) {
 	var ws WorkSession
 	var stale int
-	err := row.Scan(&ws.ID, &ws.FeatureID, &ws.ClaudeSessionID, &ws.Status, &ws.SessionState, &ws.StartedAt, &ws.EndedAt, &stale, &ws.LastHeartbeat)
+	err := row.Scan(&ws.ID, &ws.FeatureID, &ws.ClaudeSessionID, &ws.Status, &ws.SessionState, &ws.StartedAt, &ws.EndedAt, &stale, &ws.LastHeartbeat, &ws.McpPid)
 	if err != nil {
 		return nil, err
 	}
 	ws.HandoffStale = stale != 0
 	return &ws, nil
+}
+
+// ExecRaw executes raw SQL on the store (test helper).
+func (s *Store) ExecRaw(query string, args ...any) {
+	s.db.Exec(query, args...)
+}
+
+// SetMcpPid sets or clears the mcp_pid for a work session.
+func (s *Store) SetMcpPid(id int64, pid *int64) error {
+	_, err := s.db.Exec(
+		`UPDATE work_sessions SET mcp_pid = ? WHERE id = ?`, pid, id,
+	)
+	return err
 }

@@ -24,5 +24,5 @@ End the current Docket work session and write the handoff file.
 
 - This does NOT close Claude — only the Docket work session.
 - The handoff file will be available at `.docket/handoff/<feature-id>.md`.
-- Starting work on a new feature after this will open a new work session.
+- After closing, call `bind_session(feature_id="...", session_id="...")` to start tracking a new feature. The session ID is shown in the session context.
 - This is a user-initiated action — Claude should not call this autonomously.

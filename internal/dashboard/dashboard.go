@@ -86,21 +86,35 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 				fp.LastHeartbeat = info.LastHeartbeat
 			}
 
-			// Check if there's an open session (including idle ones not in sessionStates)
+			// Check session liveness — three-valued: alive, dead, unknown
 			if openSess, err := s.GetOpenWorkSessionForFeature(f.ID); err == nil && openSess != nil {
 				if fp.SessionState == "" {
 					fp.SessionState = "idle"
 				}
-				// Verify the terminal is actually alive via PID file
-				pDir := devDir
-				if pDir == "" {
-					pDir, _ = os.Getwd()
-				}
-				if !isWindowAlive(pDir, f.ID) {
-					// Terminal is dead — clean up and show no session
-					s.CloseWorkSession(openSess.ID)
-					fp.SessionState = ""
-					fp.LastHeartbeat = nil
+				// Check mcp_pid if available (definitive liveness)
+				if openSess.McpPid != nil && *openSess.McpPid > 0 {
+					if isPIDRunning(*openSess.McpPid) {
+						// alive — keep existing state
+					} else {
+						// dead — clean up
+						s.CloseWorkSession(openSess.ID)
+						fp.SessionState = ""
+						fp.LastHeartbeat = nil
+					}
+				} else if openSess.ClaudeSessionID == "dashboard-launch" {
+					// Placeholder — check terminal PID
+					pDir := devDir
+					if pDir == "" {
+						pDir, _ = os.Getwd()
+					}
+					if !isWindowAlive(pDir, f.ID) {
+						s.CloseWorkSession(openSess.ID)
+						fp.SessionState = ""
+						fp.LastHeartbeat = nil
+					}
+				} else {
+					// No mcp_pid, not a placeholder — unknown liveness
+					fp.SessionState = "unlinked"
 				}
 			}
 
@@ -309,12 +323,23 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 		// Check for any open session (including idle — terminal is still open)
 		openSession, _ := s.GetOpenWorkSessionForFeature(id)
 		if openSession != nil {
-			// Verify the terminal window is actually alive (Windows-specific;
-			// Unix always returns true and relies on focus command exit codes)
-			if !isWindowAlive(projDir, id) {
-				// Window is gone — clean up stale session, fall through to launch
-				s.CloseWorkSession(openSession.ID)
-				openSession = nil
+			if openSession.McpPid != nil && *openSession.McpPid > 0 {
+				if !isPIDRunning(*openSession.McpPid) {
+					// Dead — clean up
+					s.CloseWorkSession(openSession.ID)
+					openSession = nil
+				}
+			} else if openSession.ClaudeSessionID == "dashboard-launch" {
+				if !isWindowAlive(projDir, id) {
+					s.CloseWorkSession(openSession.ID)
+					openSession = nil
+				}
+			} else {
+				// Unknown liveness — reclaim if stale (>24h heartbeat)
+				if openSession.LastHeartbeat != nil && time.Since(*openSession.LastHeartbeat) > 24*time.Hour {
+					s.CloseWorkSession(openSession.ID)
+					openSession = nil
+				}
 			}
 		}
 		if openSession != nil {

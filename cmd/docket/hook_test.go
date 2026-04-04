@@ -41,8 +41,8 @@ func TestSessionStartWithFeature(t *testing.T) {
 	var buf bytes.Buffer
 	handleSessionStart(h, &buf)
 
-	// Verify commits.log was created
-	commitsPath := filepath.Join(dir, ".docket", "commits.log")
+	// Verify session-scoped commits log was created
+	commitsPath := commitsLogPath(dir, "test-session")
 	if _, err := os.Stat(commitsPath); os.IsNotExist(err) {
 		t.Error("commits.log was not created")
 	}
@@ -99,9 +99,8 @@ func TestStopNeverBlocks(t *testing.T) {
 	s.UpdateFeature("test-feature", store.FeatureUpdate{Status: strPtr("in_progress")})
 	s.OpenWorkSession("test-feature", "sess-1")
 
-	commitsPath := filepath.Join(dir, ".docket", "commits.log")
-	os.WriteFile(commitsPath, []byte("abc123|||fix bug\n"), 0644)
-	os.WriteFile(filepath.Join(dir, ".docket", "transcript-offset"), []byte("0"), 0644)
+	os.WriteFile(commitsLogPath(dir, "sess-1"), []byte("abc123|||fix bug\n"), 0644)
+	os.WriteFile(transcriptOffsetPath(dir, "sess-1"), []byte("0"), 0644)
 	s.Close()
 
 	h := &hookInput{
@@ -155,9 +154,8 @@ func TestStopEnqueuesCheckpointWithCommits(t *testing.T) {
 	s.UpdateFeature("my-feature", store.FeatureUpdate{Status: strPtr("in_progress")})
 	s.OpenWorkSession("my-feature", "sess-1")
 
-	commitsPath := filepath.Join(dir, ".docket", "commits.log")
-	os.WriteFile(commitsPath, []byte("abc123|||feat: add something\n"), 0644)
-	os.WriteFile(filepath.Join(dir, ".docket", "transcript-offset"), []byte("0"), 0644)
+	os.WriteFile(commitsLogPath(dir, "sess-1"), []byte("abc123|||feat: add something\n"), 0644)
+	os.WriteFile(transcriptOffsetPath(dir, "sess-1"), []byte("0"), 0644)
 	s.Close()
 
 	h := &hookInput{
@@ -280,14 +278,12 @@ func TestSessionEndCleansStaleHandoffs(t *testing.T) {
 	var buf bytes.Buffer
 	handleSessionEnd(h, &buf)
 
-	// Active feature should have a handoff
+	// Active feature should have a handoff (written for this session's feature)
 	if _, err := os.Stat(filepath.Join(handoffDir, "active-feature.md")); err != nil {
 		t.Error("active handoff should exist")
 	}
-	// Done feature handoff should be cleaned up
-	if _, err := os.Stat(filepath.Join(handoffDir, "done-feature.md")); !os.IsNotExist(err) {
-		t.Error("stale handoff should be deleted")
-	}
+	// Done feature handoff is NOT cleaned up by SessionEnd anymore — scoped to session's feature only
+	// (cleanup is a separate concern)
 }
 
 func TestSessionEndCleansCommitsLog(t *testing.T) {
@@ -298,7 +294,7 @@ func TestSessionEndCleansCommitsLog(t *testing.T) {
 	s.OpenWorkSession("test-feature", "sess-1")
 	s.Close()
 
-	commitsPath := filepath.Join(dir, ".docket", "commits.log")
+	commitsPath := commitsLogPath(dir, "sess-1")
 	os.WriteFile(commitsPath, []byte("abc123|||fix bug\n"), 0644)
 
 	h := &hookInput{
@@ -311,7 +307,7 @@ func TestSessionEndCleansCommitsLog(t *testing.T) {
 	handleSessionEnd(h, &buf)
 
 	if _, err := os.Stat(commitsPath); !os.IsNotExist(err) {
-		t.Error("expected commits.log to be deleted after SessionEnd")
+		t.Error("expected session-scoped commits log to be deleted after SessionEnd")
 	}
 }
 
@@ -705,8 +701,8 @@ func TestPostToolUseRecordsCommit(t *testing.T) {
 	var buf bytes.Buffer
 	handlePostToolUse(h, &buf)
 
-	// Verify commits.log has the commit
-	commitsPath := filepath.Join(dir, ".docket", "commits.log")
+	// Verify session-scoped commits log has the commit
+	commitsPath := commitsLogPath(dir, "test-session")
 	data, err := os.ReadFile(commitsPath)
 	if err != nil {
 		t.Fatalf("read commits.log: %v", err)
@@ -765,8 +761,8 @@ func TestPreToolUseNoFeatures(t *testing.T) {
 		t.Errorf("expected get_ready instruction, got: %s", out.SystemMessage)
 	}
 
-	// Verify sentinel was written
-	sentinel := filepath.Join(dir, ".docket", "agent-nudged")
+	// Verify session-scoped sentinel was written
+	sentinel := agentNudgedPath(dir, "test-session")
 	if _, err := os.Stat(sentinel); os.IsNotExist(err) {
 		t.Error("expected agent-nudged sentinel to be created")
 	}
@@ -856,8 +852,8 @@ func TestPreToolUseFeatureWithTaskItems(t *testing.T) {
 		t.Errorf("expected no systemMessage when task items exist, got: %s", out.SystemMessage)
 	}
 
-	// Verify no sentinel written
-	sentinel := filepath.Join(dir, ".docket", "agent-nudged")
+	// Verify no session-scoped sentinel written
+	sentinel := agentNudgedPath(dir, "test-session")
 	if _, err := os.Stat(sentinel); !os.IsNotExist(err) {
 		t.Error("sentinel should NOT be written when feature has task items")
 	}
@@ -871,8 +867,8 @@ func TestPreToolUseSentinelPreventsReNudge(t *testing.T) {
 	}
 	s.Close()
 
-	// Write the sentinel (simulating a prior nudge)
-	sentinel := filepath.Join(dir, ".docket", "agent-nudged")
+	// Write the session-scoped sentinel (simulating a prior nudge)
+	sentinel := agentNudgedPath(dir, "test-session")
 	os.WriteFile(sentinel, []byte{}, 0644)
 
 	h := &hookInput{
@@ -902,8 +898,8 @@ func TestSessionStartClearsSentinel(t *testing.T) {
 	}
 	s.Close()
 
-	// Write a sentinel from a prior session
-	sentinel := filepath.Join(dir, ".docket", "agent-nudged")
+	// Write a session-scoped sentinel (simulating stale state for this session ID)
+	sentinel := agentNudgedPath(dir, "test-session")
 	os.WriteFile(sentinel, []byte{}, 0644)
 
 	h := &hookInput{
@@ -927,7 +923,7 @@ func TestPreCompactEnqueuesCheckpoint(t *testing.T) {
 	s.AddFeature("Test Feature", "test")
 	s.UpdateFeature("test-feature", store.FeatureUpdate{Status: strPtr("in_progress")})
 	s.OpenWorkSession("test-feature", "sess-1")
-	os.WriteFile(filepath.Join(dir, ".docket", "transcript-offset"), []byte("0"), 0644)
+	os.WriteFile(transcriptOffsetPath(dir, "sess-1"), []byte("0"), 0644)
 	s.Close()
 
 	h := &hookInput{
@@ -963,22 +959,24 @@ func TestPreCompactEnqueuesCheckpoint(t *testing.T) {
 
 func TestIsDeltaMeaningfulWithCommitsLog(t *testing.T) {
 	dir := t.TempDir()
+	sessionID := "test-session-123"
 	os.MkdirAll(filepath.Join(dir, ".docket"), 0755)
-	commitsPath := filepath.Join(dir, ".docket", "commits.log")
+	commitsPath := commitsLogPath(dir, sessionID)
 	os.WriteFile(commitsPath, []byte("abc123|||fix bug\n"), 0644)
 
 	delta := &transcript.Delta{}
-	if !isDeltaMeaningful(dir, delta) {
+	if !isDeltaMeaningful(dir, sessionID, delta) {
 		t.Error("delta with commits.log should be meaningful")
 	}
 }
 
 func TestIsDeltaMeaningfulEmpty(t *testing.T) {
 	dir := t.TempDir()
+	sessionID := "test-session-123"
 	os.MkdirAll(filepath.Join(dir, ".docket"), 0755)
 
 	delta := &transcript.Delta{}
-	if isDeltaMeaningful(dir, delta) {
+	if isDeltaMeaningful(dir, sessionID, delta) {
 		t.Error("empty delta should not be meaningful")
 	}
 }
@@ -1241,7 +1239,7 @@ func TestPostToolUseFlipsSessionState(t *testing.T) {
 	s.Close()
 
 	// Write sentinel file (normally written by Stop hook)
-	os.WriteFile(filepath.Join(dir, ".docket", "needs-attention"), []byte{}, 0644)
+	os.WriteFile(filepath.Join(dir, ".docket", "needs-attention-sess-1"), []byte{}, 0644)
 
 	h := &hookInput{
 		SessionID:     "sess-1",
@@ -1277,7 +1275,7 @@ func TestPostToolUseFlipsSessionState(t *testing.T) {
 	}
 
 	// Verify sentinel was removed
-	if _, err := os.Stat(filepath.Join(dir, ".docket", "needs-attention")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, ".docket", "needs-attention-sess-1")); !os.IsNotExist(err) {
 		t.Error("expected needs-attention sentinel to be removed after flip")
 	}
 }

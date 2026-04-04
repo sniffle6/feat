@@ -128,7 +128,7 @@ func TestGetActiveSessionStates(t *testing.T) {
 	s.SetSessionState(wsA.ID, "working")
 
 	// B: needs_attention session
-	// Opening B closes A (one active session at a time), so we get B only
+	// Opening B does NOT close A (feature-scoped: different features stay open)
 	wsB, _ := s.OpenWorkSession("feature-b", "session-2")
 	s.SetSessionState(wsB.ID, "needs_attention")
 
@@ -139,7 +139,12 @@ func TestGetActiveSessionStates(t *testing.T) {
 		t.Fatalf("GetActiveSessionStates: %v", err)
 	}
 
-	// B should be present (it's the latest open session with non-idle state)
+	// A should be present (feature-scoped close means it stays open)
+	if states["feature-a"].State != "working" {
+		t.Errorf("feature-a state = %q, want %q", states["feature-a"].State, "working")
+	}
+
+	// B should be present
 	if states["feature-b"].State != "needs_attention" {
 		t.Errorf("feature-b state = %q, want %q", states["feature-b"].State, "needs_attention")
 	}
@@ -201,6 +206,67 @@ func TestGetActiveSessionStatesReturnsHeartbeat(t *testing.T) {
 	}
 }
 
+func TestOpenWorkSessionUpgradesPlaceholder(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Tag Editing", "dashboard tag editing")
+
+	// Simulate dashboard launch: creates placeholder session with "launching" state
+	s.CreatePlaceholderSession("tag-editing")
+	ph, _ := s.GetOpenWorkSessionForFeature("tag-editing")
+	if ph == nil {
+		t.Fatal("expected placeholder session")
+	}
+	if ph.SessionState != "launching" {
+		t.Errorf("placeholder SessionState = %q, want %q", ph.SessionState, "launching")
+	}
+	if ph.ClaudeSessionID != "dashboard-launch" {
+		t.Errorf("placeholder ClaudeSessionID = %q, want %q", ph.ClaudeSessionID, "dashboard-launch")
+	}
+
+	// Simulate real Claude session starting: should upgrade placeholder, not create new
+	ws, err := s.OpenWorkSession("tag-editing", "real-session-abc")
+	if err != nil {
+		t.Fatalf("OpenWorkSession: %v", err)
+	}
+	if ws.ID != ph.ID {
+		t.Errorf("expected upgrade (same ID %d), got new session %d", ph.ID, ws.ID)
+	}
+	if ws.ClaudeSessionID != "real-session-abc" {
+		t.Errorf("ClaudeSessionID = %q, want %q", ws.ClaudeSessionID, "real-session-abc")
+	}
+	// State should still be "launching" — caller sets to "working"
+	if ws.SessionState != "launching" {
+		t.Errorf("SessionState = %q, want %q (preserved from placeholder)", ws.SessionState, "launching")
+	}
+}
+
+func TestGetWorkSessionByClaudeSession(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+	s.AddFeature("Feature B", "")
+
+	// Create placeholder for A (dashboard launch)
+	s.CreatePlaceholderSession("feature-a")
+
+	// Create real session for B
+	wsB, _ := s.OpenWorkSession("feature-b", "session-xyz")
+
+	// GetWorkSessionByClaudeSession should find B's session, not A's placeholder
+	ws, err := s.GetWorkSessionByClaudeSession("session-xyz")
+	if err != nil {
+		t.Fatalf("GetWorkSessionByClaudeSession: %v", err)
+	}
+	if ws.ID != wsB.ID {
+		t.Errorf("got session %d, want %d (session-xyz)", ws.ID, wsB.ID)
+	}
+
+	// Querying for unknown session returns error — no fallback to unrelated sessions
+	_, err = s.GetWorkSessionByClaudeSession("unknown-session")
+	if err == nil {
+		t.Error("expected error for unknown session, got nil")
+	}
+}
+
 func TestOpenWorkSessionSetsHeartbeat(t *testing.T) {
 	s := openTestStore(t)
 	s.AddFeature("Auth System", "token auth")
@@ -211,5 +277,189 @@ func TestOpenWorkSessionSetsHeartbeat(t *testing.T) {
 	}
 	if ws.LastHeartbeat == nil {
 		t.Fatal("expected LastHeartbeat to be set on new work session")
+	}
+}
+
+func TestOpenWorkSessionFeatureScoped(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+	s.AddFeature("Feature B", "")
+
+	wsA, err := s.OpenWorkSession("feature-a", "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wsB, err := s.OpenWorkSession("feature-b", "session-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Session A should still be open
+	reloaded, err := s.GetWorkSession(wsA.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Status != "open" {
+		t.Errorf("session A should still be open, got %q", reloaded.Status)
+	}
+
+	// Both sessions open
+	if wsB.Status != "open" {
+		t.Errorf("session B should be open, got %q", wsB.Status)
+	}
+}
+
+func TestOpenWorkSessionSupersedes(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+
+	wsA, err := s.OpenWorkSession("feature-a", "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wsB, err := s.OpenWorkSession("feature-a", "session-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Session A should be closed (superseded)
+	reloaded, err := s.GetWorkSession(wsA.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Status != "closed" {
+		t.Errorf("session A should be closed, got %q", reloaded.Status)
+	}
+	if wsB.Status != "open" {
+		t.Errorf("session B should be open, got %q", wsB.Status)
+	}
+}
+
+func TestBindSessionReopenAfterEndSession(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+	s.AddFeature("Feature B", "")
+
+	// Open session on feat-a
+	ws1, _ := s.OpenWorkSession("feature-a", "session-1")
+	pid := int64(99999)
+	s.SetMcpPid(ws1.ID, &pid)
+
+	// Simulate end_session: close and clear mcp_pid
+	s.SetMcpPid(ws1.ID, nil)
+	s.CloseWorkSession(ws1.ID)
+
+	// Rebind to feat-b (same claude session)
+	ws2, err := s.OpenWorkSession("feature-b", "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws2.FeatureID != "feature-b" {
+		t.Errorf("expected feature-b, got %q", ws2.FeatureID)
+	}
+	if ws2.Status != "open" {
+		t.Errorf("expected open, got %q", ws2.Status)
+	}
+
+	// Original session should still be closed
+	reloaded, _ := s.GetWorkSession(ws1.ID)
+	if reloaded.Status != "closed" {
+		t.Errorf("original session should be closed, got %q", reloaded.Status)
+	}
+}
+
+func TestZombieSessionReclaim(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+
+	// Create a zombie: open session, no mcp_pid, stale heartbeat
+	ws, _ := s.OpenWorkSession("feature-a", "old-session")
+	// Manually set heartbeat to 25 hours ago
+	s.ExecRaw(`UPDATE work_sessions SET last_heartbeat = datetime('now', '-25 hours') WHERE id = ?`, ws.ID)
+
+	// Reload to verify stale heartbeat
+	reloaded, _ := s.GetWorkSession(ws.ID)
+	if reloaded.McpPid != nil {
+		t.Fatal("expected nil McpPid for zombie")
+	}
+
+	// New session supersedes the zombie (same feature)
+	ws2, err := s.OpenWorkSession("feature-a", "new-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws2.ClaudeSessionID != "new-session" {
+		t.Errorf("expected new-session, got %q", ws2.ClaudeSessionID)
+	}
+
+	// Zombie should be closed
+	reloaded, _ = s.GetWorkSession(ws.ID)
+	if reloaded.Status != "closed" {
+		t.Errorf("zombie should be closed, got %q", reloaded.Status)
+	}
+}
+
+func TestManualSessionSkipsPlaceholder(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+	s.AddFeature("Feature B", "")
+
+	// Create placeholder for feat-a (dashboard launch pending)
+	s.CreatePlaceholderSession("feature-a")
+
+	// Verify feat-a has an open session, feat-b doesn't
+	openA, _ := s.GetOpenWorkSessionForFeature("feature-a")
+	if openA == nil {
+		t.Fatal("expected placeholder session for feature-a")
+	}
+	openB, _ := s.GetOpenWorkSessionForFeature("feature-b")
+	if openB != nil {
+		t.Fatal("expected no session for feature-b")
+	}
+
+	// Open manual session on feat-b (the first unoccupied feature)
+	ws, err := s.OpenWorkSession("feature-b", "manual-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws.FeatureID != "feature-b" {
+		t.Errorf("expected feature-b, got %q", ws.FeatureID)
+	}
+
+	// Placeholder should still be intact
+	openA, _ = s.GetOpenWorkSessionForFeature("feature-a")
+	if openA == nil || openA.ClaudeSessionID != "dashboard-launch" {
+		t.Error("placeholder for feature-a should still exist")
+	}
+}
+
+func TestSetMcpPid(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+
+	ws, _ := s.OpenWorkSession("feature-a", "session-1")
+	if ws.McpPid != nil {
+		t.Fatalf("expected nil McpPid, got %v", *ws.McpPid)
+	}
+
+	pid := int64(12345)
+	if err := s.SetMcpPid(ws.ID, &pid); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded, _ := s.GetWorkSession(ws.ID)
+	if reloaded.McpPid == nil || *reloaded.McpPid != 12345 {
+		t.Errorf("expected McpPid=12345, got %v", reloaded.McpPid)
+	}
+
+	// Clear it
+	if err := s.SetMcpPid(ws.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, _ = s.GetWorkSession(ws.ID)
+	if reloaded.McpPid != nil {
+		t.Errorf("expected nil McpPid after clear, got %v", *reloaded.McpPid)
 	}
 }

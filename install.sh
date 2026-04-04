@@ -147,20 +147,40 @@ fi
 
 # --- Step 5: Clean up old installations ---
 
-# Remove old pre-plugin install location
+# Kill running docket so file locks don't block cleanup (Windows)
+if tasklist 2>/dev/null | grep -qi "docket.exe"; then
+    taskkill //F //IM docket.exe >>/dev/null 2>&1 && echo "Stopped running docket.exe" || true
+fi
+
+# Remove old global MCP config entry BEFORE deleting old binary dir
+# (otherwise the entry points at a deleted path if script aborts later)
+MCP_FILE="$HOME/.claude/.mcp.json"
+if [ -f "$MCP_FILE" ] && grep -q '"docket"' "$MCP_FILE" 2>/dev/null; then
+    if command -v jq &> /dev/null; then
+        tmp=$(mktemp)
+        jq 'del(.mcpServers.docket)' "$MCP_FILE" > "$tmp" && mv "$tmp" "$MCP_FILE"
+        echo "Removed docket from $MCP_FILE (old global config)"
+    elif command -v python3 &> /dev/null; then
+        python3 -c "
+import json, sys
+with open(sys.argv[1], 'r') as f:
+    data = json.load(f)
+data.get('mcpServers', {}).pop('docket', None)
+with open(sys.argv[1], 'w') as f:
+    json.dump(data, f, indent=2)
+" "$MCP_FILE"
+        echo "Removed docket from $MCP_FILE (old global config)"
+    else
+        echo "WARNING: Cannot auto-remove docket from $MCP_FILE (no jq or python3)."
+        echo "Please remove the docket entry manually — the plugin handles MCP registration now."
+    fi
+fi
+
+# Remove old pre-plugin install location (best-effort — don't abort on failure)
 OLD_INSTALL="$HOME/.local/share/docket"
 if [ -d "$OLD_INSTALL" ]; then
     echo "Removing old installation at $OLD_INSTALL..."
-    rm -rf "$OLD_INSTALL"
-    echo "Removed $OLD_INSTALL"
-fi
-
-# Remove old global MCP config entry if present
-MCP_FILE="$HOME/.claude/.mcp.json"
-if [ -f "$MCP_FILE" ] && grep -q '"docket"' "$MCP_FILE" 2>/dev/null; then
-    echo ""
-    echo "NOTE: docket is still in $MCP_FILE (old global config)."
-    echo "The plugin now handles MCP registration. You can remove the docket entry from $MCP_FILE."
+    rm -rf "$OLD_INSTALL" || echo "WARNING: Could not fully remove $OLD_INSTALL (files may be locked). Remove manually."
 fi
 
 # Invalidate Claude Code's plugin cache so it re-caches from marketplace

@@ -14,10 +14,19 @@ import (
 type Worker struct {
 	store      *store.Store
 	summarizer SummarizerBackend
+	Wake       chan struct{} // signal to wake immediately when a job is enqueued
 }
 
 func NewWorker(s *store.Store, summarizer SummarizerBackend) *Worker {
-	return &Worker{store: s, summarizer: summarizer}
+	return &Worker{store: s, summarizer: summarizer, Wake: make(chan struct{}, 1)}
+}
+
+// Notify wakes the worker to check for new jobs immediately.
+func (w *Worker) Notify() {
+	select {
+	case w.Wake <- struct{}{}:
+	default: // already pending
+	}
 }
 
 // Run polls for queued jobs and processes them until ctx is cancelled.
@@ -31,7 +40,9 @@ func (w *Worker) Run(ctx context.Context, pollInterval time.Duration) {
 			return
 		case <-ticker.C:
 			for w.ProcessOne() {
-				// drain all queued jobs before waiting
+			}
+		case <-w.Wake:
+			for w.ProcessOne() {
 			}
 		}
 	}

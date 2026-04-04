@@ -12,7 +12,7 @@ When a Claude Code session ends and a new one starts, the agent loses nuance -- 
 
 **Two-tier generation:**
 
-1. **Stop hook (re-trigger phase)** -- on the second stop attempt (`stop_hook_active=true`), the hook reads the database and writes a structured markdown file with: status, progress, left_off, next 3 tasks, key files, recent sessions, subtask progress. No LLM involved -- instant and free.
+1. **Stop hook (re-trigger phase)** -- on the second stop attempt (`stop_hook_active=true`), the hook reads the database and writes a structured markdown file with: status, progress, spec/plan paths, left_off, next 3 tasks, key files, recent sessions, subtask progress. No LLM involved -- instant and free.
 
 2. **Board-manager (enriched)** -- when dispatched after commits, the board-manager reads the mechanical handoff and appends synthesized sections: decisions & context, gotchas, and recommended approach. These enrichment sections are preserved across rewrites (the Stop hook extracts and re-appends them).
 
@@ -32,7 +32,7 @@ The Stop hook deletes handoff files for features that are no longer in_progress.
 
 ## Key files
 
-- `cmd/docket/handoff.go` -- renderHandoff, writeHandoffFile, cleanStaleHandoffs
-- `cmd/docket/hook.go` -- Stop handler calls writeHandoffFile; SessionStart reads handoff files
-- `internal/store/handoff.go` -- HandoffData struct and GetHandoffData method
+- `internal/handoff/render.go` -- Render, WriteFile, CleanStale
+- `cmd/docket/hook.go` -- Stop handler calls WriteFile; SessionStart reads handoff files
+- `internal/store/store.go` -- HandoffData struct and GetHandoffData method
 - `plugin/agents/board-manager.md` -- agent instructions for enriching handoff files

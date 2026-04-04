@@ -35,6 +35,18 @@ func (s *Store) getNote(id int64) (*Note, error) {
 	return &n, nil
 }
 
+func (s *Store) DeleteNote(id int64) error {
+	res, err := s.db.Exec(`DELETE FROM notes WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete note %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("note %d not found", id)
+	}
+	return nil
+}
+
 func (s *Store) GetNotesForFeature(featureID string) ([]Note, error) {
 	rows, err := s.db.Query(
 		`SELECT id, feature_id, content, created_at FROM notes WHERE feature_id = ? ORDER BY id DESC`,
