@@ -15,6 +15,7 @@ type WorkSession struct {
 	EndedAt         *time.Time `json:"ended_at"`
 	HandoffStale    bool       `json:"handoff_stale"`
 	LastHeartbeat   *time.Time `json:"last_heartbeat"`
+	McpPid          *int64     `json:"mcp_pid"`
 }
 
 // OpenWorkSession opens a new work session or resumes an existing open one
@@ -22,7 +23,7 @@ type WorkSession struct {
 func (s *Store) OpenWorkSession(featureID, claudeSessionID string) (*WorkSession, error) {
 	// Try to resume existing open session for same feature+claude session
 	row := s.db.QueryRow(
-		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat, mcp_pid
          FROM work_sessions WHERE feature_id = ? AND claude_session_id = ? AND status = 'open'`,
 		featureID, claudeSessionID,
 	)
@@ -49,8 +50,8 @@ func (s *Store) OpenWorkSession(featureID, claudeSessionID string) (*WorkSession
 		return s.GetWorkSession(placeholderID)
 	}
 
-	// Close any other open sessions (one active session at a time)
-	s.db.Exec(`UPDATE work_sessions SET status = 'closed', ended_at = datetime('now') WHERE status = 'open'`)
+	// Close any other open sessions for the same feature (feature-scoped)
+	s.db.Exec(`UPDATE work_sessions SET status = 'closed', ended_at = datetime('now') WHERE feature_id = ? AND status = 'open'`, featureID)
 
 	now := time.Now().UTC()
 	res, err := s.db.Exec(
@@ -84,7 +85,7 @@ func (s *Store) CreatePlaceholderSession(featureID string) error {
 
 func (s *Store) GetWorkSession(id int64) (*WorkSession, error) {
 	row := s.db.QueryRow(
-		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat, mcp_pid
          FROM work_sessions WHERE id = ?`, id,
 	)
 	return scanWorkSession(row)
@@ -93,7 +94,7 @@ func (s *Store) GetWorkSession(id int64) (*WorkSession, error) {
 // GetActiveWorkSession returns the single open work session, or error if none.
 func (s *Store) GetActiveWorkSession() (*WorkSession, error) {
 	row := s.db.QueryRow(
-		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat, mcp_pid
          FROM work_sessions WHERE status = 'open' ORDER BY id DESC LIMIT 1`,
 	)
 	return scanWorkSession(row)
@@ -105,7 +106,7 @@ func (s *Store) GetActiveWorkSession() (*WorkSession, error) {
 // state changes rather than grabbing an unrelated session.
 func (s *Store) GetWorkSessionByClaudeSession(claudeSessionID string) (*WorkSession, error) {
 	row := s.db.QueryRow(
-		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat, mcp_pid
          FROM work_sessions WHERE claude_session_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1`,
 		claudeSessionID,
 	)
@@ -115,7 +116,7 @@ func (s *Store) GetWorkSessionByClaudeSession(claudeSessionID string) (*WorkSess
 // GetOpenWorkSessionForFeature returns the open work session for a feature, or nil if none.
 func (s *Store) GetOpenWorkSessionForFeature(featureID string) (*WorkSession, error) {
 	row := s.db.QueryRow(
-		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat, mcp_pid
          FROM work_sessions WHERE feature_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1`,
 		featureID,
 	)
@@ -218,10 +219,18 @@ func (s *Store) CloseWorkSessionByFeature(featureID string) (int64, error) {
 func scanWorkSession(row scannable) (*WorkSession, error) {
 	var ws WorkSession
 	var stale int
-	err := row.Scan(&ws.ID, &ws.FeatureID, &ws.ClaudeSessionID, &ws.Status, &ws.SessionState, &ws.StartedAt, &ws.EndedAt, &stale, &ws.LastHeartbeat)
+	err := row.Scan(&ws.ID, &ws.FeatureID, &ws.ClaudeSessionID, &ws.Status, &ws.SessionState, &ws.StartedAt, &ws.EndedAt, &stale, &ws.LastHeartbeat, &ws.McpPid)
 	if err != nil {
 		return nil, err
 	}
 	ws.HandoffStale = stale != 0
 	return &ws, nil
+}
+
+// SetMcpPid sets or clears the mcp_pid for a work session.
+func (s *Store) SetMcpPid(id int64, pid *int64) error {
+	_, err := s.db.Exec(
+		`UPDATE work_sessions SET mcp_pid = ? WHERE id = ?`, pid, id,
+	)
+	return err
 }

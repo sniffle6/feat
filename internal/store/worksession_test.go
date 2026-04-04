@@ -128,7 +128,7 @@ func TestGetActiveSessionStates(t *testing.T) {
 	s.SetSessionState(wsA.ID, "working")
 
 	// B: needs_attention session
-	// Opening B closes A (one active session at a time), so we get B only
+	// Opening B does NOT close A (feature-scoped: different features stay open)
 	wsB, _ := s.OpenWorkSession("feature-b", "session-2")
 	s.SetSessionState(wsB.ID, "needs_attention")
 
@@ -139,7 +139,12 @@ func TestGetActiveSessionStates(t *testing.T) {
 		t.Fatalf("GetActiveSessionStates: %v", err)
 	}
 
-	// B should be present (it's the latest open session with non-idle state)
+	// A should be present (feature-scoped close means it stays open)
+	if states["feature-a"].State != "working" {
+		t.Errorf("feature-a state = %q, want %q", states["feature-a"].State, "working")
+	}
+
+	// B should be present
 	if states["feature-b"].State != "needs_attention" {
 		t.Errorf("feature-b state = %q, want %q", states["feature-b"].State, "needs_attention")
 	}
@@ -272,5 +277,91 @@ func TestOpenWorkSessionSetsHeartbeat(t *testing.T) {
 	}
 	if ws.LastHeartbeat == nil {
 		t.Fatal("expected LastHeartbeat to be set on new work session")
+	}
+}
+
+func TestOpenWorkSessionFeatureScoped(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+	s.AddFeature("Feature B", "")
+
+	wsA, err := s.OpenWorkSession("feature-a", "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wsB, err := s.OpenWorkSession("feature-b", "session-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Session A should still be open
+	reloaded, err := s.GetWorkSession(wsA.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Status != "open" {
+		t.Errorf("session A should still be open, got %q", reloaded.Status)
+	}
+
+	// Both sessions open
+	if wsB.Status != "open" {
+		t.Errorf("session B should be open, got %q", wsB.Status)
+	}
+}
+
+func TestOpenWorkSessionSupersedes(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+
+	wsA, err := s.OpenWorkSession("feature-a", "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wsB, err := s.OpenWorkSession("feature-a", "session-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Session A should be closed (superseded)
+	reloaded, err := s.GetWorkSession(wsA.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Status != "closed" {
+		t.Errorf("session A should be closed, got %q", reloaded.Status)
+	}
+	if wsB.Status != "open" {
+		t.Errorf("session B should be open, got %q", wsB.Status)
+	}
+}
+
+func TestSetMcpPid(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Feature A", "")
+
+	ws, _ := s.OpenWorkSession("feature-a", "session-1")
+	if ws.McpPid != nil {
+		t.Fatalf("expected nil McpPid, got %v", *ws.McpPid)
+	}
+
+	pid := int64(12345)
+	if err := s.SetMcpPid(ws.ID, &pid); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded, _ := s.GetWorkSession(ws.ID)
+	if reloaded.McpPid == nil || *reloaded.McpPid != 12345 {
+		t.Errorf("expected McpPid=12345, got %v", reloaded.McpPid)
+	}
+
+	// Clear it
+	if err := s.SetMcpPid(ws.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, _ = s.GetWorkSession(ws.ID)
+	if reloaded.McpPid != nil {
+		t.Errorf("expected nil McpPid after clear, got %v", *reloaded.McpPid)
 	}
 }

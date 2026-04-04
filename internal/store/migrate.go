@@ -366,6 +366,8 @@ const schemaV18 = `
 ALTER TABLE features ADD COLUMN plan_path TEXT NOT NULL DEFAULT '';
 `
 
+const schemaV19 = `ALTER TABLE work_sessions ADD COLUMN mcp_pid INTEGER;`
+
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec(schemaV1); err != nil {
 		return err
@@ -404,6 +406,8 @@ func migrate(db *sql.DB) error {
 	db.Exec(schemaV17)
 	// v18: add plan_path column to features
 	db.Exec(schemaV18)
+	// v19: add mcp_pid column to work_sessions
+	db.Exec(schemaV19)
 	// Populate search index if empty (first run or after v17 recreate)
 	var count int
 	if err := db.QueryRow("SELECT COUNT(*) FROM search_index").Scan(&count); err == nil && count == 0 {
