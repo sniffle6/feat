@@ -865,6 +865,7 @@ async function launchSession(featureId, e) {
     switch (data.action) {
       case 'launched':
         showToast('Session launched');
+        load(); // immediate refresh to show "Launching" badge
         break;
       case 'focused':
         showToast(data.message || 'Session focused');
@@ -889,7 +890,7 @@ async function launchSession(featureId, e) {
 
 async function closeAndRelaunch(featureId) {
   try {
-    var closeRes = await fetch(API + '/api/session/' + featureId, { method: 'DELETE' });
+    var closeRes = await fetch(API + '/api/sessions/' + featureId, { method: 'DELETE' });
     if (!closeRes.ok) {
       showToast('Close failed — session may already be closed');
     }
