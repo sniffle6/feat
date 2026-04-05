@@ -192,6 +192,12 @@ func handleSessionStart(h *hookInput, w io.Writer) {
 		return
 	}
 
+	// Also consider planned features — auto-promote to in_progress when binding
+	if len(features) == 0 {
+		planned, _ := s.ListFeatures("planned")
+		features = planned
+	}
+
 	out := hookOutput{Continue: true}
 
 	if len(features) == 0 {
@@ -255,6 +261,13 @@ func handleSessionStart(h *hookInput, w io.Writer) {
 	ws, wsErr := s.OpenWorkSession(topFeature.ID, h.SessionID)
 	if wsErr == nil {
 		s.SetSessionState(ws.ID, "working")
+	}
+
+	// Auto-promote planned features to in_progress when a session binds
+	if topFeature.Status == "planned" {
+		inProgress := "in_progress"
+		s.UpdateFeature(topFeature.ID, store.FeatureUpdate{Status: &inProgress})
+		topFeature.Status = "in_progress"
 	}
 
 	var msg strings.Builder
@@ -629,7 +642,7 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 	f.WriteString(line + "\n")
 	f.Close()
 
-	// Find active feature to prompt board-manager dispatch
+	// Find the feature this session is working on
 	s, err := store.Open(h.CWD)
 	if err != nil {
 		json.NewEncoder(w).Encode(out)
@@ -637,14 +650,25 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 	}
 	defer s.Close()
 
-	features, err := s.ListFeatures("in_progress")
-	if err != nil || len(features) == 0 {
-		json.NewEncoder(w).Encode(out)
-		return
-	}
-
+	// Use the work session to find the bound feature — more reliable than
+	// listing in_progress features and guessing which one is ours.
+	var featureID, featureTitle string
 	if ws, wsErr := s.GetWorkSessionByClaudeSession(h.SessionID); wsErr == nil {
 		s.TouchHeartbeat(ws.ID)
+		featureID = ws.FeatureID
+		if f, fErr := s.GetFeature(featureID); fErr == nil {
+			featureTitle = f.Title
+		}
+	}
+	if featureID == "" {
+		// Fallback: first in_progress feature
+		features, fErr := s.ListFeatures("in_progress")
+		if fErr != nil || len(features) == 0 {
+			json.NewEncoder(w).Encode(out)
+			return
+		}
+		featureID = features[0].ID
+		featureTitle = features[0].Title
 	}
 
 	parts := strings.SplitN(line, "|||", 2)
@@ -661,7 +685,7 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 		if isPlanFile(cf) {
 			absPath := filepath.Join(h.CWD, cf)
 			if _, statErr := os.Stat(absPath); statErr == nil {
-				result, importErr := s.ImportPlan(features[0].ID, absPath)
+				result, importErr := s.ImportPlan(featureID, absPath)
 				if importErr == nil {
 					importMsg = fmt.Sprintf("\n[docket] Auto-imported plan: %d subtasks, %d items from %s", result.SubtaskCount, result.TaskItemCount, cf)
 				}
@@ -672,23 +696,23 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 
 	if importMsg != "" {
 		// Plan file imported — show unchecked tasks (includes newly imported ones)
-		taskList := formatUncheckedTasks(s, features[0].ID)
+		taskList := formatUncheckedTasks(s, featureID)
 		if taskList != "" {
 			out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s%s\nFeature %q — unchecked tasks:%s\nDispatch board-manager agent (model: sonnet) to structure imported plan: feature_id=\"%s\", commit %s.",
-				hash, msg, importMsg, features[0].Title, taskList, features[0].ID, hash)
+				hash, msg, importMsg, featureTitle, taskList, featureID, hash)
 		} else {
 			out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s%s\nDispatch board-manager agent (model: sonnet) to structure imported plan: feature_id=\"%s\", commit %s.",
-				hash, msg, importMsg, features[0].ID, hash)
+				hash, msg, importMsg, featureID, hash)
 		}
 	} else {
 		// Normal commit — direct MCP calls only
-		taskList := formatUncheckedTasks(s, features[0].ID)
+		taskList := formatUncheckedTasks(s, featureID)
 		if taskList != "" {
 			out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s\nFeature %q — unchecked tasks:%s\nCall complete_task_item for any items this commit completes, then update_feature (left_off, key_files).",
-				hash, msg, features[0].Title, taskList)
+				hash, msg, featureTitle, taskList)
 		} else {
 			out.SystemMessage = fmt.Sprintf("[docket] Commit recorded: %s %s\nUpdate feature %q: update_feature (left_off, key_files).",
-				hash, msg, features[0].ID)
+				hash, msg, featureID)
 		}
 	}
 	json.NewEncoder(w).Encode(out)
