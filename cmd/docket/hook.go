@@ -328,7 +328,7 @@ func handleStop(h *hookInput, w io.Writer) {
 	}
 	defer s.Close()
 
-	ws, err := s.GetWorkSessionByClaudeSession(h.SessionID)
+	ws, err := s.ResolveWorkSession(h.SessionID)
 	if err != nil {
 		json.NewEncoder(w).Encode(stopHookOutput{})
 		return
@@ -401,7 +401,7 @@ func handlePreCompact(h *hookInput, w io.Writer) {
 	}
 	defer s.Close()
 
-	ws, err := s.GetWorkSessionByClaudeSession(h.SessionID)
+	ws, err := s.ResolveWorkSession(h.SessionID)
 	if err != nil {
 		json.NewEncoder(w).Encode(hookOutput{Continue: true})
 		return
@@ -435,7 +435,7 @@ func handleSessionEnd(h *hookInput, w io.Writer) {
 	}
 	defer s.Close()
 
-	ws, err := s.GetWorkSessionByClaudeSession(h.SessionID)
+	ws, err := s.ResolveWorkSession(h.SessionID)
 	if err != nil {
 		json.NewEncoder(w).Encode(stopHookOutput{})
 		return
@@ -604,7 +604,7 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 
 	if needsStateFlip || needsHeartbeat {
 		if s, err := store.Open(h.CWD); err == nil {
-			if ws, wsErr := s.GetWorkSessionByClaudeSession(h.SessionID); wsErr == nil {
+			if ws, wsErr := s.ResolveWorkSession(h.SessionID); wsErr == nil {
 				if needsStateFlip {
 					s.SetSessionState(ws.ID, "working")
 				}
@@ -653,7 +653,7 @@ func handlePostToolUse(h *hookInput, w io.Writer) {
 	// Use the work session to find the bound feature — more reliable than
 	// listing in_progress features and guessing which one is ours.
 	var featureID, featureTitle string
-	if ws, wsErr := s.GetWorkSessionByClaudeSession(h.SessionID); wsErr == nil {
+	if ws, wsErr := s.ResolveWorkSession(h.SessionID); wsErr == nil {
 		s.TouchHeartbeat(ws.ID)
 		featureID = ws.FeatureID
 		if f, fErr := s.GetFeature(featureID); fErr == nil {

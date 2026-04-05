@@ -113,6 +113,33 @@ func (s *Store) GetWorkSessionByClaudeSession(claudeSessionID string) (*WorkSess
 	return scanWorkSession(row)
 }
 
+// ResolveWorkSession finds the open work session for a Claude session ID.
+// If no exact match, falls back to any open session and re-adopts it by
+// updating its claude_session_id. This handles plugin reloads where the
+// session ID changes but the work session is still valid.
+func (s *Store) ResolveWorkSession(claudeSessionID string) (*WorkSession, error) {
+	// Exact match first
+	ws, err := s.GetWorkSessionByClaudeSession(claudeSessionID)
+	if err == nil {
+		return ws, nil
+	}
+
+	// Fallback: most recent open session — re-adopt it
+	row := s.db.QueryRow(
+		`SELECT id, feature_id, claude_session_id, status, session_state, started_at, ended_at, handoff_stale, last_heartbeat, mcp_pid
+         FROM work_sessions WHERE status = 'open' ORDER BY id DESC LIMIT 1`,
+	)
+	ws, err = scanWorkSession(row)
+	if err != nil {
+		return nil, fmt.Errorf("no open work session to resolve")
+	}
+
+	// Re-adopt: update the session ID so future lookups match directly
+	s.db.Exec(`UPDATE work_sessions SET claude_session_id = ? WHERE id = ?`, claudeSessionID, ws.ID)
+	ws.ClaudeSessionID = claudeSessionID
+	return ws, nil
+}
+
 // GetOpenWorkSessionForFeature returns the open work session for a feature, or nil if none.
 func (s *Store) GetOpenWorkSessionForFeature(featureID string) (*WorkSession, error) {
 	row := s.db.QueryRow(

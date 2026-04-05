@@ -1,7 +1,7 @@
 {
   "name": "docket",
   "description": "Feature tracking for Claude Code sessions. MCP server + board-manager agent + dashboard.",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "author": { "name": "sniffle6" },
   "license": "MIT"
 }
