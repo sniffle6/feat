@@ -854,18 +854,33 @@ function showToastWithAction(msg, btnText, onClick) {
 
 async function launchSession(featureId, e) {
   e.stopPropagation();
+
+  // Immediate client-side feedback — show "Launching" before API returns
+  var card = document.querySelector('[data-id="' + featureId + '"]');
+  if (card) {
+    var oldBadge = card.querySelector('.session-status');
+    if (oldBadge) oldBadge.remove();
+    var hdr = card.querySelector('.card-header-row');
+    if (hdr) {
+      var badge = document.createElement('span');
+      badge.className = 'session-status status-launching';
+      badge.innerHTML = '<span class="pulse"></span> Launching';
+      hdr.insertBefore(badge, hdr.querySelector('.launch-btn'));
+    }
+  }
+
   try {
     var res = await fetch(API + '/api/launch/' + featureId, { method: 'POST' });
     if (!res.ok) {
       var text = await res.text();
       showToast('Launch failed: ' + text);
+      load(); // revert the optimistic badge
       return;
     }
     var data = await res.json();
     switch (data.action) {
       case 'launched':
         showToast('Session launched');
-        load(); // immediate refresh to show "Launching" badge
         break;
       case 'focused':
         showToast(data.message || 'Session focused');
@@ -961,7 +976,7 @@ function render() {
 
       if ((state === 'working' || state === 'needs_attention' || state === 'subagent') && lastHeartbeat) {
         staleMinutes = Math.floor((Date.now() - lastHeartbeat.getTime()) / 60000);
-        isStale = staleMinutes >= 5;
+        isStale = staleMinutes >= 15;
       }
 
       if (isStale) {

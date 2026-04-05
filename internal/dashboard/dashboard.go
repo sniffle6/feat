@@ -119,7 +119,7 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 					// No mcp_pid, not a placeholder — trust DB state if
 					// heartbeat is recent (hook sets state before bind_session
 					// claims with mcp_pid). Only mark unlinked if stale.
-					if openSess.LastHeartbeat != nil && time.Since(*openSess.LastHeartbeat) > 5*time.Minute {
+					if openSess.LastHeartbeat != nil && time.Since(*openSess.LastHeartbeat) > 15*time.Minute {
 						fp.SessionState = "unlinked"
 					}
 				}
@@ -345,7 +345,7 @@ func NewHandler(s *store.Store, static fs.FS, projectDir ...string) http.Handler
 			} else {
 				// No mcp_pid, not a placeholder — reclaim if heartbeat stale.
 				// Uses same 5-min threshold as the features list liveness check.
-				if openSession.LastHeartbeat != nil && time.Since(*openSession.LastHeartbeat) > 5*time.Minute {
+				if openSession.LastHeartbeat != nil && time.Since(*openSession.LastHeartbeat) > 15*time.Minute {
 					s.CloseWorkSession(openSession.ID)
 					openSession = nil
 				}
