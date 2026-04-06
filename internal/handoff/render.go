@@ -41,6 +41,10 @@ func Render(data *store.HandoffData, cpData *CheckpointData) string {
 		fmt.Fprintf(&b, "## Left Off\n%s\n\n", f.LeftOff)
 	}
 
+	if f.Synthesis != "" {
+		fmt.Fprintf(&b, "## Synthesis\n%s\n\n", f.Synthesis)
+	}
+
 	// Last Session section from checkpoint observations
 	if cpData != nil && (len(cpData.Observations) > 0 || cpData.MechanicalFacts != nil) {
 		b.WriteString("## Last Session\n")

@@ -262,6 +262,9 @@ func getContextHandler(s *store.Store) server.ToolHandlerFunc {
 		if f.LeftOff != "" {
 			fmt.Fprintf(&b, "Left off: %s\n", f.LeftOff)
 		}
+		if f.Synthesis != "" {
+			fmt.Fprintf(&b, "Synthesis: %s\n", f.Synthesis)
+		}
 		if len(f.KeyFiles) > 0 {
 			fmt.Fprintf(&b, "Key files: %s\n", strings.Join(f.KeyFiles, ", "))
 		}
