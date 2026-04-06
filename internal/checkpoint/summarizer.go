@@ -19,7 +19,25 @@ type SummarizeOutput struct {
 	Gotchas   []string `json:"gotchas"`   // non-obvious discoveries
 }
 
-// SummarizerBackend processes transcript deltas into structured observations.
+// SynthesizeInput is what the worker sends to the synthesizer for feature synthesis.
+type SynthesizeInput struct {
+	FeatureTitle string
+	Observations []ObservationEntry // all observations, newest first
+}
+
+// ObservationEntry is a simplified observation for the synthesis prompt.
+type ObservationEntry struct {
+	Kind        string
+	SummaryText string
+}
+
+// SynthesizeOutput is the plain text synthesis returned.
+type SynthesizeOutput struct {
+	Text string
+}
+
+// SummarizerBackend processes transcript deltas and synthesizes observations.
 type SummarizerBackend interface {
 	Summarize(ctx context.Context, input SummarizeInput) (*SummarizeOutput, error)
+	Synthesize(ctx context.Context, input SynthesizeInput) (*SynthesizeOutput, error)
 }

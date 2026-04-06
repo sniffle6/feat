@@ -90,6 +90,11 @@ func (w *Worker) ProcessOne() bool {
 	// Auto-merge key_files from mechanical facts
 	w.mergeKeyFiles(job)
 
+	// Run feature synthesis after session_end checkpoint
+	if job.Reason == "session_end" {
+		w.synthesizeFeature(job.FeatureID)
+	}
+
 	return true
 }
 
@@ -166,4 +171,45 @@ func (w *Worker) mergeKeyFiles(job *store.CheckpointJob) {
 	if changed {
 		w.store.UpdateFeature(job.FeatureID, store.FeatureUpdate{KeyFiles: &merged})
 	}
+}
+
+func (w *Worker) synthesizeFeature(featureID string) {
+	feature, err := w.store.GetFeature(featureID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "docket synthesis: get feature %q: %v\n", featureID, err)
+		return
+	}
+
+	obs, err := w.store.GetObservationsForFeature(featureID, 50)
+	if err != nil || len(obs) == 0 {
+		return
+	}
+
+	// Check staleness: if no new observations since last synthesis, skip
+	if obs[0].ID <= feature.SynthesisObsID {
+		return
+	}
+
+	var entries []ObservationEntry
+	for _, o := range obs {
+		entries = append(entries, ObservationEntry{Kind: o.Kind, SummaryText: o.SummaryText})
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	output, err := w.summarizer.Synthesize(ctx, SynthesizeInput{
+		FeatureTitle: feature.Title,
+		Observations: entries,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "docket synthesis: synthesize %q: %v\n", featureID, err)
+		return
+	}
+
+	if err := w.store.UpdateFeatureSynthesis(featureID, output.Text, obs[0].ID); err != nil {
+		fmt.Fprintf(os.Stderr, "docket synthesis: update %q: %v\n", featureID, err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "docket synthesis: updated %q (%d observations)\n", featureID, len(obs))
 }

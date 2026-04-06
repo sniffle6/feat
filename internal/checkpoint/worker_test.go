@@ -9,9 +9,11 @@ import (
 )
 
 type mockSummarizer struct {
-	calls  int
-	output *SummarizeOutput
-	err    error
+	calls           int
+	synthesizeCalls int
+	output          *SummarizeOutput
+	synthesizeText  string
+	err             error
 }
 
 func (m *mockSummarizer) Summarize(ctx context.Context, input SummarizeInput) (*SummarizeOutput, error) {
@@ -26,6 +28,18 @@ func (m *mockSummarizer) Summarize(ctx context.Context, input SummarizeInput) (*
 		Summary:  "Test summary",
 		Blockers: []string{},
 	}, nil
+}
+
+func (m *mockSummarizer) Synthesize(ctx context.Context, input SynthesizeInput) (*SynthesizeOutput, error) {
+	m.synthesizeCalls++
+	if m.err != nil {
+		return nil, m.err
+	}
+	text := m.synthesizeText
+	if text == "" {
+		text = "Synthesized summary of all observations."
+	}
+	return &SynthesizeOutput{Text: text}, nil
 }
 
 func TestWorkerProcessesJob(t *testing.T) {
@@ -117,4 +131,73 @@ func TestWorkerRunLoop(t *testing.T) {
 
 	w.Run(ctx, 50*time.Millisecond)
 	// No panic = pass
+}
+
+func TestWorkerSynthesizesAfterSessionEnd(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	s.AddFeature("Auth System", "token auth")
+	ws, _ := s.OpenWorkSession("auth-system", "sess-1")
+
+	s.EnqueueCheckpointJob(store.CheckpointJobInput{
+		WorkSessionID:         ws.ID,
+		FeatureID:             "auth-system",
+		Reason:                "session_end",
+		TranscriptStartOffset: 0,
+		TranscriptEndOffset:   512,
+		SemanticText:          "implemented token refresh",
+		MechanicalFacts:       store.MechanicalFacts{},
+	})
+
+	mock := &mockSummarizer{synthesizeText: "Auth system with refresh tokens implemented."}
+	w := NewWorker(s, mock)
+	w.ProcessOne()
+
+	if mock.calls != 1 {
+		t.Errorf("summarize calls = %d, want 1", mock.calls)
+	}
+	if mock.synthesizeCalls != 1 {
+		t.Errorf("synthesize calls = %d, want 1", mock.synthesizeCalls)
+	}
+
+	f, _ := s.GetFeature("auth-system")
+	if f.Synthesis != "Auth system with refresh tokens implemented." {
+		t.Errorf("Synthesis = %q, want expected text", f.Synthesis)
+	}
+	if f.SynthesisObsID == 0 {
+		t.Error("SynthesisObsID should be > 0 after synthesis")
+	}
+}
+
+func TestWorkerSkipsSynthesisForNonSessionEnd(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	s.AddFeature("Auth System", "token auth")
+	ws, _ := s.OpenWorkSession("auth-system", "sess-1")
+
+	s.EnqueueCheckpointJob(store.CheckpointJobInput{
+		WorkSessionID:         ws.ID,
+		FeatureID:             "auth-system",
+		Reason:                "stop",
+		TranscriptStartOffset: 0,
+		TranscriptEndOffset:   512,
+		SemanticText:          "some work",
+		MechanicalFacts:       store.MechanicalFacts{},
+	})
+
+	mock := &mockSummarizer{}
+	w := NewWorker(s, mock)
+	w.ProcessOne()
+
+	if mock.synthesizeCalls != 0 {
+		t.Errorf("synthesize calls = %d, want 0 for non-session_end", mock.synthesizeCalls)
+	}
 }
