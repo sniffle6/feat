@@ -259,6 +259,86 @@ func TestCheckpointIdempotency(t *testing.T) {
 	}
 }
 
+func TestGetObservationsForFeature(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Auth System", "token auth")
+
+	// Create two work sessions to simulate multiple sessions
+	ws1, _ := s.OpenWorkSession("auth-system", "sess-1")
+	ws2, _ := s.OpenWorkSession("auth-system", "sess-2")
+
+	job1, _ := s.EnqueueCheckpointJob(CheckpointJobInput{
+		WorkSessionID: ws1.ID, FeatureID: "auth-system", Reason: "stop",
+		TranscriptStartOffset: 0, TranscriptEndOffset: 512,
+		SemanticText: "text", MechanicalFacts: MechanicalFacts{},
+	})
+	job2, _ := s.EnqueueCheckpointJob(CheckpointJobInput{
+		WorkSessionID: ws2.ID, FeatureID: "auth-system", Reason: "stop",
+		TranscriptStartOffset: 0, TranscriptEndOffset: 512,
+		SemanticText: "text2", MechanicalFacts: MechanicalFacts{},
+	})
+
+	s.AddCheckpointObservation(CheckpointObservationInput{
+		CheckpointJobID: job1.ID, WorkSessionID: ws1.ID, FeatureID: "auth-system",
+		Kind: "summary", SummaryText: "Session 1 summary",
+	})
+	s.AddCheckpointObservation(CheckpointObservationInput{
+		CheckpointJobID: job1.ID, WorkSessionID: ws1.ID, FeatureID: "auth-system",
+		Kind: "gotcha", SummaryText: "Watch out for race condition",
+	})
+	s.AddCheckpointObservation(CheckpointObservationInput{
+		CheckpointJobID: job2.ID, WorkSessionID: ws2.ID, FeatureID: "auth-system",
+		Kind: "summary", SummaryText: "Session 2 summary",
+	})
+
+	// Get all observations
+	obs, err := s.GetObservationsForFeature("auth-system", 50)
+	if err != nil {
+		t.Fatalf("GetObservationsForFeature: %v", err)
+	}
+	if len(obs) != 3 {
+		t.Fatalf("got %d observations, want 3", len(obs))
+	}
+	// Ordered by ID DESC — newest first
+	if obs[0].SummaryText != "Session 2 summary" {
+		t.Errorf("first obs = %q, want Session 2 summary", obs[0].SummaryText)
+	}
+
+	// Test limit
+	obs2, _ := s.GetObservationsForFeature("auth-system", 2)
+	if len(obs2) != 2 {
+		t.Fatalf("got %d observations with limit 2, want 2", len(obs2))
+	}
+}
+
+func TestUpdateFeatureSynthesis(t *testing.T) {
+	s := openTestStore(t)
+	s.AddFeature("Auth System", "token auth")
+
+	err := s.UpdateFeatureSynthesis("auth-system", "Implemented token auth with refresh tokens.", 42)
+	if err != nil {
+		t.Fatalf("UpdateFeatureSynthesis: %v", err)
+	}
+
+	f, _ := s.GetFeature("auth-system")
+	if f.Synthesis != "Implemented token auth with refresh tokens." {
+		t.Errorf("Synthesis = %q, want expected text", f.Synthesis)
+	}
+	if f.SynthesisObsID != 42 {
+		t.Errorf("SynthesisObsID = %d, want 42", f.SynthesisObsID)
+	}
+
+	// Update again — should overwrite
+	s.UpdateFeatureSynthesis("auth-system", "Updated synthesis.", 99)
+	f2, _ := s.GetFeature("auth-system")
+	if f2.Synthesis != "Updated synthesis." {
+		t.Errorf("Synthesis after update = %q, want 'Updated synthesis.'", f2.Synthesis)
+	}
+	if f2.SynthesisObsID != 99 {
+		t.Errorf("SynthesisObsID after update = %d, want 99", f2.SynthesisObsID)
+	}
+}
+
 func TestGetMechanicalFactsForWorkSession(t *testing.T) {
 	s := openTestStore(t)
 	s.AddFeature("Auth System", "token auth")

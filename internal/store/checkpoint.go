@@ -251,6 +251,46 @@ func (s *Store) GetObservationsForWorkSession(workSessionID int64) ([]Checkpoint
 	return obs, nil
 }
 
+// GetObservationsForFeature returns observations across all work sessions
+// for a feature, ordered by ID DESC (newest first), limited to `limit` rows.
+func (s *Store) GetObservationsForFeature(featureID string, limit int) ([]CheckpointObservation, error) {
+	rows, err := s.db.Query(
+		`SELECT id, checkpoint_job_id, work_session_id, feature_id, kind, payload_json, summary_text, created_at
+		 FROM checkpoint_observations WHERE feature_id = ? ORDER BY id DESC LIMIT ?`,
+		featureID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get observations for feature: %w", err)
+	}
+	defer rows.Close()
+	var obs []CheckpointObservation
+	for rows.Next() {
+		var o CheckpointObservation
+		if err := rows.Scan(&o.ID, &o.CheckpointJobID, &o.WorkSessionID, &o.FeatureID,
+			&o.Kind, &o.PayloadJSON, &o.SummaryText, &o.CreatedAt); err != nil {
+			return nil, err
+		}
+		obs = append(obs, o)
+	}
+	return obs, nil
+}
+
+// UpdateFeatureSynthesis writes the synthesis text and high water mark observation ID.
+func (s *Store) UpdateFeatureSynthesis(featureID string, synthesis string, obsID int64) error {
+	res, err := s.db.Exec(
+		`UPDATE features SET synthesis = ?, synthesis_obs_id = ?, updated_at = ? WHERE id = ?`,
+		synthesis, obsID, time.Now().UTC(), featureID,
+	)
+	if err != nil {
+		return fmt.Errorf("update feature synthesis: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("feature %q not found", featureID)
+	}
+	return nil
+}
+
 // GetMechanicalFactsForWorkSession merges mechanical facts from all checkpoint
 // jobs in a work session into a single MechanicalFacts.
 func (s *Store) GetMechanicalFactsForWorkSession(workSessionID int64) (*MechanicalFacts, error) {
