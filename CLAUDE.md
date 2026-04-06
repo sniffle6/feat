@@ -52,7 +52,7 @@ Then run `/reload-plugins` (restarts the MCP server with the new binary). Plugin
 - `cmd/docket/update.go` — CLAUDE.md snippet sync command
 - `cmd/docket/export.go` — handoff file export for context resets
 - `internal/mcp/server.go` — MCP server setup, Binding state for multi-session support
-- `internal/mcp/tools.go` — tool registration (22 tools), handlers split across tools_*.go
+- `internal/mcp/tools.go` — tool registration (23 tools), handlers split across tools_*.go
 - `internal/mcp/tools_feature.go` — feature CRUD handlers (add, update, delete, list, get, get_context, get_ready, get_full_context)
 - `internal/mcp/tools_subtask.go` — subtask and task item handlers (add_subtask, add_task_item, complete_task_item)
 - `internal/mcp/tools_issue.go` — issue handlers (add_issue, resolve_issue, list_issues)
@@ -61,17 +61,20 @@ Then run `/reload-plugins` (restarts the MCP server with the new binary). Plugin
 - `internal/mcp/tools_checkpoint.go` — checkpoint MCP tool, transcript path finder
 - `internal/mcp/tools_session.go` — session-related MCP tool handlers (compact_sessions)
 - `internal/mcp/tools_search.go` — search MCP tool handler (FTS5 cross-feature search)
+- `internal/mcp/tools_lint.go` — lint_board MCP tool handler (board health checks)
 - `internal/store/store.go` — SQLite data layer, Feature/FeatureUpdate structs, completion gate
 - `internal/store/search.go` — FTS5 search query methods (Search, RebuildSearchIndex)
-- `internal/store/migrate.go` — schema migrations (v1-v19)
+- `internal/store/migrate.go` — schema migrations (v1-v20)
+- `internal/store/lint.go` — board health checks (LintBoard, LintReport)
 - `internal/store/handoff.go` — HandoffData struct and GetHandoffData method
-- `internal/store/checkpoint.go` — checkpoint job queue + observation CRUD
+- `internal/store/checkpoint.go` — checkpoint job queue + observation CRUD + synthesis store methods
 - `internal/store/worksession.go` — work session CRUD (open, close, get active)
 - `internal/store/templates.go` — feature type templates (feature/bugfix/chore/spike)
 - `internal/store/import.go` — plan file parser (regex-based markdown → subtasks)
 - `internal/transcript/parse.go` — JSONL transcript parser (byte-offset delta extraction)
 - `internal/transcript/types.go` — Delta struct, trivial message map
-- `internal/checkpoint/worker.go` — background job queue worker (polls, summarizes, writes observations)
+- `internal/checkpoint/worker.go` — background job queue worker (polls, summarizes, writes observations, runs synthesis)
+- `internal/checkpoint/noop.go` — no-op summarizer (used when no API key configured)
 - `internal/checkpoint/anthropic.go` — Anthropic Messages API summarizer
 - `internal/checkpoint/config.go` — checkpoint config from env vars
 - `internal/handoff/render.go` — shared handoff rendering (used by hooks and MCP tools)
