@@ -126,12 +126,16 @@ func runServe() {
 	// Start checkpoint worker in background
 	cfg := checkpoint.LoadConfig()
 	var summarizer checkpoint.SummarizerBackend
-	if cfg.Enabled {
+	switch {
+	case cfg.UseCLI:
+		summarizer = checkpoint.NewCLISummarizer(cfg.Model)
+		log.Printf("Checkpoint summarizer: enabled (claude CLI, model: %s)", cfg.Model)
+	case cfg.APIKey != "":
 		summarizer = checkpoint.NewAnthropicSummarizer(cfg)
-		log.Printf("Checkpoint summarizer: enabled (model: %s)", cfg.Model)
-	} else {
+		log.Printf("Checkpoint summarizer: enabled (API, model: %s)", cfg.Model)
+	default:
 		summarizer = &checkpoint.NoopSummarizer{}
-		log.Printf("Checkpoint summarizer: disabled (no ANTHROPIC_API_KEY)")
+		log.Printf("Checkpoint summarizer: disabled (no claude CLI or API key)")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
